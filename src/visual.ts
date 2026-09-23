@@ -674,13 +674,17 @@ export class Visual implements IVisual {
         };
 
         const enableColumn = categories.find((column) => column.source.roles && column.source.roles["groupEnable"]);
-        const seen = new Set<string>();
+        // Keyed by filter target (table + column), since that's what two rows would fight over:
+        // the same field dropped into Toggles twice, or into both Group enable and Toggles, would
+        // otherwise write conflicting filters for one column that readStatesFromFilters() then
+        // collapses back into a single state. Group enable wins - it's seeded first - whether the
+        // host sends that field as one column carrying both roles or as two separate columns.
+        const targetKey = (column: DataViewCategoryColumn) => this.filterKey(this.getFilterTarget(column.source));
+        const seen = new Set<string>(enableColumn ? [targetKey(enableColumn)] : []);
         const toggleColumns = categories
             .filter((column) => column.source.roles && column.source.roles["toggle"])
             .filter((column) => {
-                // The same field dropped into the well twice would otherwise render two rows
-                // fighting over one filter.
-                const key = column.source.queryName;
+                const key = targetKey(column);
                 if (seen.has(key)) {
                     return false;
                 }
