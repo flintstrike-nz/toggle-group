@@ -550,6 +550,9 @@ export class Visual implements IVisual {
             // has nothing to enable, so it still shows the landing page.
             if (toggleColumns.length === 0) {
                 this.items = [];
+                // Removing the last field would otherwise leave its filter filtering the report
+                // invisibly behind the landing page.
+                this.cleanUpStaleFilters(options.jsonFilters);
                 this.showLandingPage();
                 this.events.renderingFinished(options);
                 return;
@@ -788,7 +791,7 @@ export class Visual implements IVisual {
     /**
      * A field removed from the well leaves its filter behind in general.filter, silently filtering
      * the report with no visible control left to change it. Rewriting the filter set for the
-     * fields that *are* bound drops it. Only attempted once per distinct stale set (see
+     * fields that *are* bound drops it (or, with none bound, removing the property entirely). Only attempted once per distinct stale set (see
      * lastStaleCleanup), and never where interactions are disallowed.
      */
     private cleanUpStaleFilters(filters: powerbi.IFilter[] | undefined): void {
@@ -803,6 +806,11 @@ export class Visual implements IVisual {
             return;
         }
         this.lastStaleCleanup = staleKeys;
+        if (this.items.length === 0) {
+            // Nothing bound to write a replacement set for - clear the property outright.
+            this.host.applyJsonFilter(null, "general", "filter", powerbi.FilterAction.remove);
+            return;
+        }
         this.applyStates(new Map());
     }
 
