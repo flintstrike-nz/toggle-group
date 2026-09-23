@@ -32,58 +32,136 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    overflow: hidden;
     box-sizing: border-box;
     font-family: "Segoe UI", wf_segoe-ui_normal, helvetica, arial, sans-serif;
 }
 
+// The group's bordered container (containerSettings) - fills the tile, so the border reads as the
+// visual's own edge, and scrolls rather than clips when more rows are bound than fit. Border
+// treatments are fixed rgba() shading layered over the report author's own colour/width, the same
+// approach .is-depth uses on each toggle, so they work over any colour without needing its hue:
+// - Flat: a plain line.
+// - Embossed: a raised card - a light top edge, darker bottom edge and soft outer drop shadow. The
+//   outer shadow needs a few px of margin to render into, or the visual's own bounds clip it.
+// - Gutter: a recessed channel - an inner shadow along the top edge and a light lip below it.
+.toggle-group-frame {
+    display: none;
+    flex-direction: column;
+    flex: 1 1 auto;
+    align-self: stretch;
+    min-width: 0;
+    min-height: 0;
+    box-sizing: border-box;
+    overflow: auto;
+    padding: var(--toggle-frame-padding, 8px);
+    border-radius: var(--toggle-frame-radius, 4px);
+
+    &.is-border-flat,
+    &.is-border-embossed,
+    &.is-border-gutter {
+        border: var(--toggle-frame-border-width, 1px) solid var(--toggle-frame-border-color, #c8c6c4);
+    }
+
+    &.is-border-embossed {
+        margin: 4px;
+        background-image: linear-gradient(to bottom, rgba(255, 255, 255, 0.45), rgba(255, 255, 255, 0) 30%, rgba(0, 0, 0, 0.03));
+        box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.8),
+            inset 0 -1px 0 rgba(0, 0, 0, 0.12),
+            0 1px 2px rgba(0, 0, 0, 0.2),
+            0 3px 6px rgba(0, 0, 0, 0.12);
+    }
+
+    &.is-border-gutter {
+        box-shadow:
+            inset 0 2px 4px rgba(0, 0, 0, 0.22),
+            inset 0 1px 1px rgba(0, 0, 0, 0.18),
+            0 1px 0 rgba(255, 255, 255, 0.7);
+    }
+
+    // containerSettings.verticalAlignment - auto margins rather than justify-content, since
+    // justify-content: center pushes overflowing content off the top of a scroll container where it
+    // can't be scrolled back to, whereas an auto margin just collapses to 0 once content overflows.
+    &.is-valign-middle > .toggle-slicer-wrap {
+        margin-top: auto;
+        margin-bottom: auto;
+    }
+
+    &.is-valign-bottom > .toggle-slicer-wrap {
+        margin-top: auto;
+    }
+}
+
 // Wraps the title (a static heading this visual draws itself, separate from Power BI's own native
-// visual title) around the switch/label container, so the title can sit beside it (Inline) or
-// above it (Above) - the same scheme .toggle-slicer uses for its own on/off labels, just one level
-// out, since the title never changes with the switch's state.
+// visual title) around the group, so the title can sit above it (Above) or beside it (Inline
+// left/right) - the same scheme .toggle-slicer uses for each row's on/off labels, one level out.
 .toggle-slicer-wrap {
     display: flex;
     align-items: center;
     gap: var(--toggle-title-gap, 8px);
+    max-width: 100%;
 
     &--stacked {
         flex-direction: column;
+        align-items: flex-start;
     }
 
-    // "Inline right" (titleSettings.position) - titleEl already comes before the switch/label
-    // container in DOM order by default ("Inline left"), so only the "right" variant needs an order
-    // override to swap sides; "Above" (--stacked) always keeps the title first/top regardless.
+    // "Inline right" (titleSettings.position) - titleEl already comes before the group in DOM
+    // order by default ("Inline left"), so only the "right" variant needs an order override to swap
+    // sides; "Above" (--stacked) always keeps the title first/top regardless.
     &--inline-right {
         .toggle-slicer__title {
             order: 1;
         }
     }
 
-    // titleSettings.alignment - positions titleWrapEl itself within the tile via cross/main-axis auto
-    // margins (per the flexbox spec, a non-zero auto margin on an axis overrides that axis's
-    // justify-content/align-items for this item alone) rather than changing "toggle-slicer-visual"'s
-    // own justify-content, since that root element is also the parent of the unrelated landing-page/
-    // validation-message sections and touching its justify-content there would misalign whichever of
-    // those happens to be showing instead. "Justify" stretches titleWrapEl to the tile's full size so
-    // its own justify-content: space-between has room to spread its two children (the title, and the
-    // switch+label group) to opposite ends - horizontally when position is Inline (row), vertically
-    // when position is Above (column), since that's whichever axis is titleWrapEl's main axis.
+    // titleSettings.alignment - positions titleWrapEl itself within the frame via cross-axis auto
+    // margins (the frame is a column flexbox, so left/right are its cross axis) rather than changing
+    // "toggle-slicer-visual"'s own alignment, since that root element is also the parent of the
+    // unrelated landing-page/validation-message sections. "Justify" stretches titleWrapEl to the
+    // frame's full size so its own justify-content: space-between has room to spread its two
+    // children (the title, and the group) to opposite ends - horizontally when position is Inline
+    // (row), vertically when position is Above (column), since that's titleWrapEl's main axis.
     &.is-title-align-left {
         margin-right: auto;
     }
 
     &.is-title-align-right {
         margin-left: auto;
+
+        &.toggle-slicer-wrap--stacked {
+            align-items: flex-end;
+        }
     }
 
     &.is-title-align-justify {
-        width: 100%;
-        height: 100%;
+        align-self: stretch;
+        flex: 1 1 auto;
         justify-content: space-between;
+    }
+
+    // nameSettings.alignment: Justify - the group spreads names and toggles to its opposite edges,
+    // which needs the group (and so this wrapper) to span the frame's full width to have any room.
+    // The margin reset matters: a cross-axis auto margin (is-title-align-left/right above) beats
+    // align-self: stretch, which would otherwise leave this wrapper shrink-wrapped.
+    &.is-group-stretched {
+        align-self: stretch;
+        margin-left: 0;
+        margin-right: 0;
+
+        &.toggle-slicer-wrap--stacked {
+            align-items: stretch;
+        }
+
+        .toggle-group {
+            flex: 1 1 auto;
+        }
     }
 }
 
 .toggle-slicer__title {
-    font-family: var(--toggle-title-font-family, "Segoe UI", wf_segoe-ui_normal, helvetica, arial, sans-serif);
+    font-family: var(--toggle-title-font-family, "Segoe UI"), wf_segoe-ui_normal, helvetica, arial, sans-serif;
     font-size: var(--toggle-title-font-size, 14px);
     font-weight: var(--toggle-title-font-weight, 600);
     font-style: var(--toggle-title-font-style, normal);
@@ -91,25 +169,124 @@
     color: var(--toggle-title-font-color, #605e5c);
     user-select: none;
     text-align: center;
+
+    // Above: the title heads the group, so it lines up with the group's own edge rather than
+    // centring over it - that edge being whichever side titleSettings.alignment packs toward.
+    .toggle-slicer-wrap--stacked > & {
+        text-align: left;
+    }
+
+    .toggle-slicer-wrap--stacked.is-title-align-right > & {
+        text-align: right;
+    }
 }
 
+// The toggle rows. One shared CSS grid for every row (rows themselves are display: contents), so a
+// name column and a toggle column line up across the whole group regardless of each name's length.
+// DOM order decides which column comes first (render() swaps a row's name/cell elements for
+// nameSettings.position) - CSS order can't, since with display: contents rows it would reorder
+// every row's cells against each other. Indent (groupSettings.indent x each row's --toggle-level)
+// always goes on whichever cell comes first, so the whole row steps in:
+// - Names left: the name is indented; toggles stay aligned in their own column.
+// - Names right / hidden: the toggle cell is indented. Names right also pulls each name back left
+//   by however much less than the deepest row it's indented (--toggle-max-level), so a header's
+//   name hangs next to its own toggle instead of lining up with its (more indented) children's.
+.toggle-group {
+    display: grid;
+    grid-template-columns: minmax(0, max-content) max-content;
+    justify-content: start;
+    align-items: center;
+    column-gap: var(--toggle-name-gap, 8px);
+    row-gap: var(--toggle-row-gap, 8px);
+    min-width: 0;
+
+    &.is-names-right {
+        grid-template-columns: max-content minmax(0, max-content);
+    }
+
+    &.is-names-hidden {
+        grid-template-columns: max-content;
+    }
+
+    &.is-align-right {
+        justify-content: end;
+    }
+
+    // nameSettings.alignment: Justify - the flexible column takes up the slack, pushing names and
+    // toggles to opposite edges of the (stretched - see .is-group-stretched above) group.
+    &.is-align-justify {
+        grid-template-columns: minmax(0, 1fr) max-content;
+
+        &.is-names-right {
+            grid-template-columns: max-content minmax(0, 1fr);
+
+            .toggle-group__name {
+                justify-self: end;
+                margin-left: 0;
+            }
+        }
+
+        &.is-names-hidden {
+            grid-template-columns: max-content;
+        }
+    }
+
+    &.is-names-right,
+    &.is-names-hidden {
+        .toggle-slicer {
+            padding-left: calc(var(--toggle-level, 0) * var(--toggle-indent, 16px));
+        }
+    }
+
+    &.is-names-right .toggle-group__name {
+        padding-left: 0;
+        margin-left: calc((var(--toggle-level, 0) - var(--toggle-max-level, 0)) * var(--toggle-indent, 16px));
+    }
+
+    &.is-readonly .toggle-group__name {
+        cursor: default;
+    }
+}
+
+.toggle-group__children,
+.toggle-group__row {
+    display: contents;
+}
+
+.toggle-group__name {
+    padding-left: calc(var(--toggle-level, 0) * var(--toggle-indent, 16px));
+    font-family: var(--toggle-name-font-family, "Segoe UI"), wf_segoe-ui_normal, helvetica, arial, sans-serif;
+    font-size: var(--toggle-name-font-size, 12px);
+    font-weight: var(--toggle-name-font-weight, normal);
+    font-style: var(--toggle-name-font-style, normal);
+    text-decoration: var(--toggle-name-text-decoration, none);
+    color: var(--toggle-name-font-color, #252423);
+    overflow-wrap: anywhere;
+    cursor: pointer;
+    user-select: none;
+}
+
+// Group enable Off: every row below it is greyed out and inert (see isDisabled() in visual.ts) but
+// keeps showing its own On/Off state, since disabling a row doesn't change it.
+.toggle-group__name.is-disabled,
+.toggle-slicer.is-disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+// One row's toggle cell: its switch plus that row's on/off state label.
 .toggle-slicer {
     display: flex;
     align-items: center;
     gap: var(--toggle-label-gap, 8px);
 
-    // All three labelPosition values now show only the label matching the current state (see
-    // render()) - both label spans stay in the DOM either way, so each variant below only needs an
-    // order override so whichever one is visible renders on the correct side/above the switch,
-    // regardless of its normal DOM position (the "on" label otherwise comes after the switch in
-    // markup).
+    // All three labelPosition values show only the label matching the current state (see
+    // renderSwitch()) - both label spans stay in the DOM either way, so each variant below only
+    // needs an order override so whichever one is visible renders on the correct side/above the
+    // switch, regardless of its normal DOM position (the "on" label otherwise comes after the
+    // switch in markup).
     &--stacked {
         flex-direction: column;
-        // Stretches this row to fill titleWrapEl's own width, so is-align-left/right below always has
-        // spare space to move within independently of titleSettings.alignment - the usual reason to
-        // set labelPosition to Above is precisely to get a row that can be aligned under a (possibly
-        // wider) title, and that shouldn't also require setting the title's own alignment.
-        align-self: stretch;
 
         .toggle-slicer__label {
             order: -1;
@@ -118,15 +295,6 @@
 
         .toggle-slicer__switch {
             order: 0;
-        }
-
-        // Scoped to --stacked only - see the unscoped is-align-left/right comment below for why.
-        &.is-align-left {
-            margin-right: auto;
-        }
-
-        &.is-align-right {
-            margin-left: auto;
         }
     }
 
@@ -151,26 +319,9 @@
             order: 0;
         }
     }
-
-    // toggleSettings.alignment: left/right only take effect within --stacked (see above), not here -
-    // outside --stacked this row shares titleWrapEl's own row with the title (labelPosition
-    // inline-left/inline-right), and an auto margin here would consume free space *before*
-    // titleSettings.alignment: justify's own space-between gets a chance to use it, silently
-    // preventing the far more common "just set the title's alignment to Justify" case from spreading
-    // the title and switch apart at all. "Justify" is left unscoped since flex-grow doesn't have that
-    // problem - it just has nothing to grow *into* unless this row's container is wider than its
-    // shrink-wrapped content, i.e. unless labelPosition is Above (--stacked's own align-self: stretch)
-    // or titleSettings.alignment is also Justify (titleWrapEl stretched to the tile's full size);
-    // outside both, this is a harmless no-op rather than a silent bug for the same reason left/right
-    // needed scoping above.
-    &.is-align-justify {
-        flex: 1 1 auto;
-        justify-content: space-between;
-    }
 }
-
 .toggle-slicer__label {
-    font-family: var(--toggle-label-font-family, "Segoe UI", wf_segoe-ui_normal, helvetica, arial, sans-serif);
+    font-family: var(--toggle-label-font-family, "Segoe UI"), wf_segoe-ui_normal, helvetica, arial, sans-serif;
     font-size: var(--toggle-label-font-size, 12px);
     font-weight: var(--toggle-label-font-weight, normal);
     font-style: var(--toggle-label-font-style, normal);
@@ -188,17 +339,19 @@
 }
 
 .toggle-slicer__switch {
-    // Height-driven sizing: width always follows at a fixed 2:1 ratio (44x22's own ratio), so a
-    // report author only ever sets one dimension - see Size settings in settings.ts. In Responsive
-    // mode (the default), height scales fluidly with the visual's own height (the "toggle-slicer"
-    // container's cqh unit) between --toggle-min-height/--toggle-max-height, clamping at either end
-    // rather than growing or shrinking without bound; --toggle-min-height/--toggle-max-height/
-    // --toggle-fixed-height themselves are set on the root element in applySize(), so they inherit
-    // down to here. This custom property is deliberately declared here rather than on the root
-    // "toggle-slicer-visual" element itself - a size container's cqh/cqw units resolve to 0 on the
-    // container element itself (a container can't query its own size), so it has to live on a
-    // descendant instead. is-size-fixed (Fixed mode) overrides it to a single literal height below.
-    --toggle-track-height: clamp(var(--toggle-min-height, 16px), 50cqh, var(--toggle-max-height, 22px));
+    // Height-driven sizing: width always follows at a fixed ratio (2:1 - 44x22's own ratio - for the
+    // toggle skin, 1:1 for checkbox/radio), so a report author only ever sets one dimension - see
+    // Size settings in settings.ts. In Responsive mode (the default), height scales fluidly with the
+    // visual's own height (the "toggle-slicer" container's cqh unit), shared out across every row
+    // (--toggle-row-count, set in render()) so a tall tile with many rows doesn't size each toggle
+    // as though it had the whole tile to itself, clamped between --toggle-min-height/
+    // --toggle-max-height; those and --toggle-fixed-height are set on the root element in
+    // applySize(), so they inherit down to here. This custom property is deliberately declared here
+    // rather than on the root "toggle-slicer-visual" element itself - a size container's cqh/cqw
+    // units resolve to 0 on the container element itself (a container can't query its own size),
+    // so it has to live on a descendant instead. is-size-fixed (Fixed mode) overrides it to a
+    // single literal height below.
+    --toggle-track-height: clamp(var(--toggle-min-height, 16px), calc(50cqh / var(--toggle-row-count, 1)), var(--toggle-max-height, 22px));
     --toggle-track-width: calc(var(--toggle-track-height) * 2);
     // Border width (borderWidth, 0-6px) and height (minHeight/fixedHeight, 8-200px) are independent
     // report-author settings, so a large border paired with a short switch could otherwise collapse
@@ -222,7 +375,7 @@
     }
 
     // A shadow only, no lift/movement - the switch stays put on hover.
-    &:hover:not(.is-readonly) {
+    &:hover:not(.is-readonly):not(.is-disabled) {
         filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.25));
     }
 
@@ -235,11 +388,26 @@
         opacity: 0.7;
     }
 
-    // Checkbox skin: same track/knob elements as the toggle skin (so colour, border and the
-    // is-depth "fancy" treatment below all apply unchanged), just square instead of pill-shaped and
-    // with no sliding knob to make room for.
-    &.is-checkbox {
+    // Opacity for a disabled row comes from its whole cell (.toggle-slicer.is-disabled), so the
+    // state label greys out with it - this only swaps the cursor.
+    &.is-disabled {
+        cursor: not-allowed;
+    }
+
+    // Checkbox and radio skins: same track/knob elements as the toggle skin (so colour, border and
+    // the is-depth "fancy" treatment below all apply unchanged), just square/round instead of
+    // pill-shaped. The focus ring follows the element's own border-radius, so it's matched too.
+    &.is-checkbox,
+    &.is-radio {
         width: var(--toggle-track-height);
+    }
+
+    &.is-checkbox {
+        border-radius: calc(var(--toggle-track-height) * 0.2);
+    }
+
+    &.is-radio {
+        border-radius: 50%;
     }
 }
 
@@ -296,6 +464,18 @@
     transform: translateX(calc(var(--toggle-track-width) - var(--toggle-track-height)));
 }
 
+// A master row whose children are only partly On: filled like On, with the toggle skin's knob
+// parked halfway (the checkbox skin shows a dash instead - see .toggle-slicer__checkmark-dash).
+.toggle-slicer__switch.is-mixed .toggle-slicer__track {
+    background-color: var(--toggle-on-color, #2ecc71);
+    border-color: var(--toggle-track-border-color-on, transparent);
+}
+
+.toggle-slicer__switch.is-mixed .toggle-slicer__knob {
+    background-color: var(--toggle-knob-color-on, #ffffff);
+    transform: translateX(calc((var(--toggle-track-width) - var(--toggle-track-height)) / 2));
+}
+
 // "3D depth" option, knob half: a sheen gradient plus a stronger drop shadow makes it look like a
 // raised, glossy button rather than a flat disc, with the shadow lifting further on hover to match
 // the switch-level hover lift above.
@@ -304,14 +484,14 @@
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.35), 0 1px 1px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
-.toggle-slicer__switch.is-depth:hover:not(.is-readonly) .toggle-slicer__knob {
+.toggle-slicer__switch.is-depth:hover:not(.is-readonly):not(.is-disabled) .toggle-slicer__knob {
     box-shadow: 0 3px 6px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
 // Checkbox skin's track: a rounded square (scaled off the same --toggle-track-height as the toggle
 // skin, so it stays proportional at any Size setting) instead of a pill, with the sliding knob
 // hidden - background-color/border/is-depth gradient all still come from the same rules above,
-// since they target .toggle-slicer__track generically rather than anything toggle-specific.
+// since they target .toggle-slicer__track generically rather than anything skin-specific.
 .toggle-slicer__switch.is-checkbox .toggle-slicer__track {
     border-radius: calc(var(--toggle-track-height) * 0.2);
 }
@@ -320,9 +500,10 @@
     display: none;
 }
 
-// Checkbox skin's "on" mark. Hidden entirely outside is-checkbox (including for the toggle skin,
-// where the element still exists in the DOM - see checkmarkEl in visual.ts); faded/scaled in and
-// out with is-on the same way the toggle skin's knob slides, rather than an abrupt show/hide.
+// Checkbox skin's "on"/"mixed" mark. Hidden entirely outside is-checkbox (including for the other
+// skins, where the element still exists in the DOM - see buildRow() in visual.ts); faded/scaled in
+// and out with is-on/is-mixed the same way the toggle skin's knob slides, rather than an abrupt
+// show/hide. The tick shows for On, the dash for a Mixed master row.
 .toggle-slicer__checkmark {
     display: none;
     position: absolute;
@@ -337,19 +518,57 @@
     pointer-events: none;
 }
 
+.toggle-slicer__checkmark-dash {
+    display: none;
+}
+
 .toggle-slicer__switch.is-checkbox .toggle-slicer__checkmark {
     display: block;
 }
 
-.toggle-slicer__switch.is-checkbox.is-on .toggle-slicer__checkmark {
+.toggle-slicer__switch.is-checkbox.is-on .toggle-slicer__checkmark,
+.toggle-slicer__switch.is-checkbox.is-mixed .toggle-slicer__checkmark {
     opacity: 1;
     transform: scale(1);
+}
+
+.toggle-slicer__switch.is-mixed {
+    .toggle-slicer__checkmark-tick {
+        display: none;
+    }
+
+    .toggle-slicer__checkmark-dash {
+        display: inline;
+    }
 }
 
 // "3D depth" option, checkbox skin: a drop shadow under the checkmark itself, echoing the extra
 // shadow layers is-depth already adds to the toggle skin's knob.
 .toggle-slicer__switch.is-depth.is-checkbox .toggle-slicer__checkmark {
     filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.35));
+}
+
+// Radio skin: a circular track, with the toggle skin's own knob reused as the centre dot - centred
+// (inset 0 + auto margins) at half the track's inner size, scaling in when On instead of sliding.
+// Reusing the knob rather than a separate element is what gives the radio skin the exact same
+// colours, border ring and is-depth sheen/shadow as the other two skins with no extra rules, and
+// the more specific selectors here win over the toggle skin's own knob size/translateX.
+.toggle-slicer__switch.is-radio .toggle-slicer__track {
+    border-radius: 50%;
+}
+
+.toggle-slicer__switch.is-radio .toggle-slicer__knob {
+    inset: 0;
+    margin: auto;
+    width: 50%;
+    height: 50%;
+    opacity: 0;
+    transform: scale(0.3);
+}
+
+.toggle-slicer__switch.is-radio.is-on .toggle-slicer__knob {
+    opacity: 1;
+    transform: scale(1);
 }
 
 .toggle-slicer__message {
@@ -361,7 +580,7 @@
 }
 
 // "No field bound" placeholder: icon + heading (mirrors the host's own generic empty-state), a
-// divider, a greyed-out skeleton of the switch, and a compact hint about accepted value formats.
+// divider, a greyed-out skeleton of a toggle group, and a compact hint about accepted value formats.
 .toggle-slicer__landing {
     display: none;
     flex-direction: column;
@@ -404,22 +623,51 @@
     background-color: #e1e1e1;
 }
 
+// Three skeleton rows - a name bar plus a small track, the lower two indented - previewing a
+// master switch over its children.
+.toggle-slicer__landing-skeleton {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    animation: toggle-slicer-skeleton-pulse 1.6s ease-in-out infinite;
+}
+
+.toggle-slicer__landing-skeleton-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    &.is-indented {
+        padding-left: 14px;
+    }
+}
+
+.toggle-slicer__landing-skeleton-name {
+    width: 56px;
+    height: 8px;
+    border-radius: 4px;
+    background-color: #e4e4e4;
+}
+
+.toggle-slicer__landing-skeleton-row.is-indented .toggle-slicer__landing-skeleton-name {
+    width: 42px;
+}
+
 .toggle-slicer__landing-skeleton-track {
     position: relative;
     box-sizing: border-box;
-    width: 44px;
-    height: 22px;
+    width: 32px;
+    height: 16px;
     border-radius: 999px;
     background-color: #e4e4e4;
-    animation: toggle-slicer-skeleton-pulse 1.6s ease-in-out infinite;
 }
 
 .toggle-slicer__landing-skeleton-knob {
     position: absolute;
     top: 2px;
     left: 2px;
-    width: 18px;
-    height: 18px;
+    width: 12px;
+    height: 12px;
     border-radius: 50%;
     background-color: #c8c8c8;
 }
@@ -525,17 +773,17 @@
         transition: none;
     }
 
-    .toggle-slicer__switch:hover:not(.is-readonly) {
+    .toggle-slicer__switch:hover:not(.is-readonly):not(.is-disabled) {
         filter: none;
     }
 
-    .toggle-slicer__landing-skeleton-track {
+    .toggle-slicer__landing-skeleton {
         animation: none;
     }
 }
 
 // The skeleton/divider are decorative flat greys with no real state to reflect (unlike the live
-// switch, which already gets its colours from applyColors()'s isHighContrast branch) - under
+// toggles, which already gets its colours from applyColors()'s isHighContrast branch) - under
 // Windows High Contrast (forced-colors), fall back to system colours instead of custom greys that
 // forced-colors mode may otherwise render illegibly, and drop the pulse to match.
 @media (forced-colors: active) {
@@ -543,10 +791,17 @@
         background-color: CanvasText;
     }
 
+    .toggle-slicer__landing-skeleton {
+        animation: none;
+    }
+
     .toggle-slicer__landing-skeleton-track {
         background-color: Canvas;
         border: 1px solid CanvasText;
-        animation: none;
+    }
+
+    .toggle-slicer__landing-skeleton-name {
+        background-color: CanvasText;
     }
 
     .toggle-slicer__landing-skeleton-knob {
@@ -564,8 +819,9 @@
     }
 }
 
-// Shrink the control on small tiles instead of overflowing or clipping.
-@container toggle-slicer (max-width: 90px) {
+// Shrink the control on small tiles instead of overflowing or clipping - the state labels go first,
+// since each row's name already says which toggle it is.
+@container toggle-slicer (max-width: 120px) {
     .toggle-slicer__label {
         display: none;
     }
@@ -581,5 +837,13 @@
 
     .toggle-slicer__landing-guide {
         display: flex;
+    }
+}
+
+// The group table's CROSSJOIN lines are the guide's widest - give them room to sit unscrolled once
+// the tile is wide enough (the code block's own overflow-x scroll stays the fallback below this).
+@container toggle-slicer (min-width: 440px) and (min-height: 200px) {
+    .toggle-slicer__landing {
+        max-width: 420px;
     }
 }
