@@ -1,6 +1,6 @@
 # Toggle Group Visual
 
-A custom Power BI visual: a **group of on/off toggles**, one per field, each driving its own DAX-readable filter. Draw them as sliding switches, checkboxes or radio buttons, box them in a flat, embossed or gutter border, and give the group rules: **Only one active**, a **Master switch**, and a **Group enable** toggle that greys out the rest. It replaces a stack of standard slicers styled to look like switches, giving report users a cleaner, purpose-built control for a pattern that gets reused across many reports.
+A custom Power BI visual: a **group of on/off toggles**, one per column of a single group table, each driving its own DAX-readable filter. Draw them as sliding switches, checkboxes or radio buttons, box them in a flat, embossed or gutter border, and give the group rules: **Only one active**, a **Master switch**, and a **Group enable** toggle that greys out the rest. It replaces a stack of standard slicers styled to look like switches, giving report users a cleaner, purpose-built control for a pattern that gets reused across many reports.
 
 Built by a Health Data Analyst Business Partner at Health New Zealand | Te Whatu Ora, for use in internal Power BI reporting.
 
@@ -45,28 +45,33 @@ In Power BI Desktop:
 
 The **Toggle Group** icon now appears at the bottom of your Visualizations pane.
 
-### 3. Build one small table per toggle
+### 3. Build one table for the group
 
-Each toggle is its own tiny **disconnected** table. The table's *column name* becomes the toggle's name in the visual, so give it a readable, sentence-case name. **Modeling → New table**:
+The whole group lives in **one disconnected table**, with **one column per toggle**. Each column's name becomes that toggle's name in the visual, so give the columns readable, sentence-case names. **Modeling → New table**:
 
 ```dax
-Show Budget = DATATABLE(
-    "Show budget", STRING,
-    "Value", INTEGER,
-    {
-        {"On", 1},
-        {"Off", 0}
-    }
+Budget Options =
+CROSSJOIN(
+    DATATABLE("Show budget", STRING, {{"On"}, {"Off"}}),
+    DATATABLE("Include ED", STRING, {{"On"}, {"Off"}}),
+    DATATABLE("Exclude outliers", STRING, {{"On"}, {"Off"}})
 )
 ```
 
-Then **Modeling → New measure** that reads it:
+`CROSSJOIN` gives the table every On/Off combination (2 × 2 × 2 = 8 rows here). That's what lets each column be switched independently: filtering *Show budget* to On still leaves both values of every other column. To add a toggle later, add another `DATATABLE(...)` line.
+
+Then **Modeling → New measure**, one per toggle:
 
 ```dax
-Show Budget State = SELECTEDVALUE('Show Budget'[Value], 0)
+Show Budget State =
+IF(
+    SELECTEDVALUE('Budget Options'[Show budget]) = "On",
+    1,
+    0
+)
 ```
 
-Repeat for each toggle you want in the group (e.g. `Include ED`, `Exclude Outliers`). Use `[Show Budget State]` anywhere else in the model, e.g.:
+Use `[Show Budget State]` anywhere else in the model, e.g.:
 
 ```dax
 Sales or Budget =
@@ -77,13 +82,13 @@ IF(
 )
 ```
 
-> `"On"`/`"Off"` is just the convention used here — `"True"`/`"False"` and `1`/`0` work too, and each toggle is checked independently, so one group can mix conventions. Every toggle renders **Off** until someone clicks it (or a bookmark applies a state), so set each measure's `SELECTEDVALUE` fallback (the `0` above) to your Off value. See [Tables and bridges](#tables-and-bridges) if a toggle needs to filter real data through relationships instead of a measure.
+> `"On"`/`"Off"` is just the convention used here — `"True"`/`"False"` and `1`/`0` work too, and each column is checked independently. Comparing to `"On"` (rather than using `SELECTEDVALUE`'s fallback) means an unfiltered column reads as Off, which is exactly what every toggle shows until someone clicks it. See [Tables and bridges](#tables-and-bridges) if the toggles need to filter real data through relationships instead of measures.
 
 ### 4. Add the visual and bind the fields
 
 1. Drag the **Toggle Group** icon onto the report canvas.
-2. Drag your first toggle's column (e.g. `'Show Budget'[Show budget]`) into the **Toggles** field well. The toggle appears straight away, and **a new empty slot appears below it** in the well, ready for the next one.
-3. Keep dragging columns in — one per toggle, up to 12. Rows render in the order they sit in the well; drag within the well to reorder them.
+2. Drag the first toggle's column (e.g. `'Budget Options'[Show budget]`) into the **Toggles** field well. The toggle appears straight away, and **a new empty slot appears below it** in the well, ready for the next one.
+3. Keep dragging the table's columns in — one per toggle, up to 12. Rows render in the order they sit in the well; drag within the well to reorder them.
 4. To rename a toggle for this visual only, use **Rename for this visual** on the field in the well.
 5. *(Optional)* Drag a Group enable column into **Group enable** — see [Group rules](#group-rules).
 
@@ -110,72 +115,95 @@ Click each toggle; any visual using its measure should update immediately, the s
 
 ## How it works
 
-Each field in the **Toggles** well is one toggle. Clicking a toggle writes a real slicer-style filter on that field's column (the same `general.filter` mechanism a native slicer uses). The visual keeps **one basic filter per field**, `'Show Budget'[Show budget] IN {"On"}` or `IN {"Off"}`, and always writes the whole group's set at once. So:
+Each column in the **Toggles** well is one toggle. Clicking a toggle writes a real slicer-style filter on that column (the same `general.filter` mechanism a native slicer uses). The visual keeps **one basic filter per column**, `'Budget Options'[Show budget] IN {"On"}` or `IN {"Off"}`, and always writes the whole group's set at once. So:
 
-- `SELECTEDVALUE('Show Budget'[Value], 0)` — and anything built on it — reads each toggle exactly like a slicer.
+- `SELECTEDVALUE('Budget Options'[Show budget])` — and anything built on it — reads each toggle exactly like a slicer.
 - State persists across saves, survives bookmarks, and can be synced across pages.
-- A toggle that's Off applies its **Off** value rather than clearing its filter, so bridge tables can map Off to "everything" (see below).
+- A toggle that's Off applies its **Off** value rather than clearing its filter. That keeps every column filtered once the group has been used, which the bridge pattern below relies on.
 
-Fields from separate tables reach the visual cross-joined (every combination of every field's values), so the visual de-duplicates each column on its own and checks each one has exactly one On value and one Off value. That cross join is also why a group is capped at 12 toggles: 2¹² combinations is still a trivially small query, but it doubles with every field added.
+The visual de-duplicates each column's values on its own and checks each has exactly one On value and one Off value, so the extra combination rows in the table don't matter to it. The 12-toggle cap keeps the table small: 2¹² = 4,096 rows, or 8,192 with a Group enable column.
 
-If you remove a field from the well, its filter would otherwise stay applied invisibly. The visual rewrites the filter set on its next update to drop it.
+If you remove a field from the well, its filter would otherwise stay applied invisibly. The visual rewrites the filter set on its next update to drop it (or clears it entirely once the well is empty).
 
 ## Tables and bridges
 
-Moving from one switch to a group changes the recommended model from "one `ToggleTable` per report" to **"one small table per toggle"**. This is deliberate: separate tables are what let each toggle filter independently. Putting several On/Off columns in one table would need a row for every combination, and a filter on one column would silently constrain the others.
+The model is **one disconnected table per group**, with one On/Off column per toggle, built with `CROSSJOIN` so it holds every combination (see [Quick start](#3-build-one-table-for-the-group)). The combinations matter. A table with just two rows and several columns would tie the columns together, so switching one toggle would silently change what the others can show.
+
+> Columns from separate tables also work (the visual treats each field the same way), but one table per group keeps the model tidy and is what the bridge pattern below needs.
 
 ### Pattern A — measure-driven (recommended)
 
-One disconnected table + one measure per toggle, exactly as in [Quick start](#3-build-one-small-table-per-toggle). Nothing relates to the rest of the model, and measures decide what each toggle means. This supports every group rule, including Group enable.
+One group table plus one measure per toggle, exactly as in [Quick start](#3-build-one-table-for-the-group). The table relates to nothing, and measures decide what each toggle means. This supports every group rule, including Group enable.
 
 ### Pattern B — bridge-driven (filter real data through relationships)
 
-Use this when a toggle should filter a dimension directly, e.g. "Show budget-holding cost centres only". Each toggle gets its own bridge that maps **On → the subset** and **Off → every member**:
+Use this when the toggles should filter a dimension directly, e.g. "Show budget-holding cost centres only". A table can only have one active path to a dimension, so the whole group shares **one bridge**, keyed on the combination of toggle states. First, give the group table a key column (**Modeling → New column** on `Budget Options`):
 
 ```dax
-Bridge Show Budget =
-UNION(
-    SELECTCOLUMNS(
-        FILTER('Cost Centre', 'Cost Centre'[Has Budget]),
-        "Toggle", "On", "Cost Centre Key", 'Cost Centre'[Cost Centre Key]
+Option Key =
+'Budget Options'[Show budget] & "|" & 'Budget Options'[Include ED]
+```
+
+Then the bridge lists, for every combination, the members that pass **all** of its On toggles. An Off toggle doesn't restrict anything:
+
+```dax
+Budget Options Bridge =
+SELECTCOLUMNS(
+    GENERATE(
+        'Budget Options',
+        FILTER(
+            'Cost Centre',
+            ('Budget Options'[Show budget] = "Off" || 'Cost Centre'[Has Budget])
+                && ('Budget Options'[Include ED] = "Off" || 'Cost Centre'[Is ED])
+        )
     ),
-    SELECTCOLUMNS(
-        'Cost Centre',
-        "Toggle", "Off", "Cost Centre Key", 'Cost Centre'[Cost Centre Key]
-    )
+    "Option Key", 'Budget Options'[Option Key],
+    "Cost Centre Key", 'Cost Centre'[Cost Centre Key]
 )
 ```
 
 Relationships:
 
-- `'Show Budget'[Show budget]` (one) → `'Bridge Show Budget'[Toggle]` (many), single direction.
-- `'Bridge Show Budget'[Cost Centre Key]` (many) → `'Cost Centre'[Cost Centre Key]` (one), **both directions**, so the filter can flow from the bridge up to the dimension.
+- `'Budget Options'[Option Key]` (one) → `'Budget Options Bridge'[Option Key]` (many), single direction.
+- `'Budget Options Bridge'[Cost Centre Key]` (many) → `'Cost Centre'[Cost Centre Key]` (one), **both directions**, so the filter can flow from the bridge up to the dimension.
 
-With several bridged toggles on the same dimension, their filters **intersect** (AND): each On toggle narrows the dimension further, and each Off toggle leaves it untouched. Combined with **Only one active**, that gives a "pick one lens" control: exactly one subset applies at a time, or none.
+On toggles **intersect** (AND): each one narrows the dimension further, and Off toggles leave it untouched. Combined with **Only one active**, that gives a "pick one lens" control: exactly one subset applies at a time, or none. Before anyone clicks, nothing is filtered, so every combination (and every member) is in play.
 
-> **Group enable with bridges:** switching Group enable Off greys the toggles out but does *not* remove their filters, because the toggles keep their state by design. Bridge filters therefore keep applying while the group is disabled. If disabling the group has to neutralise the toggles, use Pattern A and gate the measures (below).
+The bridge has up to (combinations × members) rows, e.g. 8 × 2,000 cost centres = 16,000 rows for three toggles. Keep bridged groups to a handful of toggles; for more, use Pattern A.
 
-### Group enable table
+### Group enable column
 
-Build it like any other toggle table, but give its measure a fallback of **1**, because Group enable renders **On** until someone first switches it Off (so a new group isn't born disabled):
+Add it to the **same** `CROSSJOIN` as the toggles:
 
 ```dax
-Group Enable = DATATABLE(
-    "Budget options enabled", STRING,
-    "Value", INTEGER,
-    {
-        {"On", 1},
-        {"Off", 0}
-    }
-)
+    DATATABLE("Options enabled", STRING, {{"On"}, {"Off"}}),
+```
 
+Group enable renders **On** until someone first switches it Off, so a new group isn't born disabled. Its test is therefore `<> "Off"`, so that unfiltered reads as enabled. Gate each toggle's measure on it:
+
+```dax
 Show Budget Active =
 IF(
-    SELECTEDVALUE('Group Enable'[Value], 1) = 1,
+    SELECTEDVALUE('Budget Options'[Options enabled]) <> "Off",
     [Show Budget State],
     0
 )
 ```
+
+With **bridges**, gate in the bridge instead. Add `[Options enabled]` to `Option Key`, and treat "Off" as "no toggle restricts anything":
+
+```dax
+FILTER(
+    'Cost Centre',
+    'Budget Options'[Options enabled] = "Off"
+        || (
+            ('Budget Options'[Show budget] = "Off" || 'Cost Centre'[Has Budget])
+                && ('Budget Options'[Include ED] = "Off" || 'Cost Centre'[Is ED])
+        )
+)
+```
+
+Switching Group enable Off then neutralises every bridged toggle while they keep showing (and remembering) their own state.
 
 ## Group rules
 
@@ -185,13 +213,14 @@ All in the **Group rules** card, except Group enable, which comes from binding a
 |---|---|
 | **Only one active** | Turning a toggle On turns every other toggle Off. Turning the active one Off leaves none On — except with the **Radio** control style, where (like a native radio group) the active option can't be clicked Off. |
 | **Master switch** | Adds a master toggle at the top; the rest are indented by **Indent** px. Master On/Off sets every toggle below it On/Off. It shows **On** when all are On, **Off** when none are, and **mixed** (a dash on the checkbox; a half-way knob on the toggle) when only some are. Clicking a mixed master turns them all On. It has no field of its own. Under Only one active, "all On" isn't allowed, so the master reads On when *any* toggle is On, and switching it On selects the first toggle. |
-| **Group enable** | Bind an On/Off field to the **Group enable** well. It's drawn as a header toggle at the very top, and everything below it (master included) is indented. Switching it Off **disables** the toggles below it — greyed out, not clickable, out of the tab order — **without changing their state**. Because it's a real field, DAX can read it (see [Group enable table](#group-enable-table)). |
+| **Group enable** | Bind an On/Off field to the **Group enable** well. It's drawn as a header toggle at the very top, and everything below it (master included) is indented. Switching it Off **disables** the toggles below it — greyed out, not clickable, out of the tab order — **without changing their state**. Because it's a real field, DAX can read it (see [Group enable column](#group-enable-column)). |
 
 Master switch and Group enable can be combined: Group enable at the top, master below it, toggles below that, each level indented. Under the **Radio** style, header rows (master, Group enable) are drawn as checkboxes, since they aren't one of the mutually exclusive options.
 
 ## Features
 
-- **Dynamic field well** — drop in a field and a new empty slot appears below it; one toggle row per field, up to 12.
+- **One table per group** — each toggle is a column of the group's own table.
+- **Dynamic field well** — drop in a column and a new empty slot appears below it; one toggle row per column, up to 12.
 - **Three control styles** — sliding **Toggle**, square **Checkbox** or round **Radio**. All three share the same colours, border, sizing and "Make it fancy!" treatment.
 - **Group rules** — Only one active, Master switch (with mixed state), and Group enable (disable without resetting).
 - **Container border** — None, Flat, Embossed or Gutter, with colour, width, corner radius, padding and optional fill.
@@ -275,11 +304,11 @@ Width always follows height: 2:1 for the Toggle style, 1:1 for Checkbox and Radi
 
 ## Troubleshooting
 
-**I see "Drag one field per toggle into Toggles to build the group".**
+**I see "Drag your group table's columns into Toggles, one per toggle".**
 Nothing is bound to **Toggles** yet (a Group enable field on its own isn't enough). Resize the tile larger to reveal a copyable starter-DAX guide.
 
 **I see a message saying a field must contain exactly one On row and one Off row.**
-The message names the field. It must resolve to exactly two values, one On-shaped (`"On"`, `"true"`, `1`, case-insensitive) and one Off-shaped (`"Off"`, `"false"`, `0`). The usual cause is binding a real column (e.g. Region), or putting several toggles' columns in one table so their values multiply. Give each toggle its own table.
+The message names the field. It must resolve to exactly two values, one On-shaped (`"On"`, `"true"`, `1`, case-insensitive) and one Off-shaped (`"Off"`, `"false"`, `0`). The usual cause is binding a real column (e.g. Region) or the bridge's `Option Key` column instead of a toggle column.
 
 **Clicking a toggle does nothing / it's greyed out.**
 If there's a Group enable toggle at the top, it's Off — switch it On. Otherwise check the visual isn't in a read-only context (Focus mode thumbnail, some embeds), where toggles show a reduced-opacity read-only state.
@@ -291,10 +320,10 @@ That's radio behaviour under Only one active. Add a Master switch to clear the g
 Rules apply on the next click, so a group that already has several toggles On keeps them until someone clicks.
 
 **Disabling the group didn't change my numbers.**
-By design, Group enable disables the controls without changing their state or filters. Gate your measures on the Group enable field — see [Group enable table](#group-enable-table).
+By design, Group enable disables the controls without changing their state or filters. Gate your measures (or bridge) on the Group enable column — see [Group enable column](#group-enable-column).
 
 **The toggles don't match my measures on first load.**
-Every toggle starts Off (Group enable starts On) until clicked, since the visual can't read `SELECTEDVALUE`'s fallback out of your DAX. Make each fallback match: `0`/Off for toggles, `1`/On for Group enable.
+Every toggle starts Off (Group enable starts On) until clicked, since the visual can't read your DAX. Write measures so an unfiltered column agrees: compare toggles to `"On"` and Group enable to `<> "Off"`, as in the starter DAX, rather than relying on `SELECTEDVALUE`'s fallback.
 
 **A custom colour or font isn't showing.**
 High Contrast mode overrides custom colours with the theme's palette, for legibility.

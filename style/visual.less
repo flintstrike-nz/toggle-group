@@ -838,3 +838,11 @@
         display: flex;
     }
 }
+
+// The group table's CROSSJOIN lines are the guide's widest - give them room to sit unscrolled once
+// the tile is wide enough (the code block's own overflow-x scroll stays the fallback below this).
+@container toggle-slicer (min-width: 440px) and (min-height: 200px) {
+    .toggle-slicer__landing {
+        max-width: 420px;
+    }
+}

@@ -4,13 +4,13 @@
             "displayName": "Toggles",
             "name": "toggle",
             "kind": "Grouping",
-            "description": "One field per toggle, each from its own small On/Off table (e.g. \"On\"/\"Off\", \"True\"/\"False\" or 1/0). Drop a field in and a new empty slot appears below it for the next toggle."
+            "description": "One On/Off column per toggle (e.g. \"On\"/\"Off\", \"True\"/\"False\" or 1/0), normally all from the same group table. Drop a column in and a new empty slot appears below it for the next toggle."
         },
         {
             "displayName": "Group enable",
             "name": "groupEnable",
             "kind": "Grouping",
-            "description": "Optional. An On/Off field drawn as a header toggle above the group - switching it Off greys out (disables) every toggle below it without changing their state."
+            "description": "Optional. An On/Off column (normally in the same group table) drawn as a header toggle above the group - switching it Off greys out (disables) every toggle below it without changing their state."
         }
     ],
     "dataViewMappings": [

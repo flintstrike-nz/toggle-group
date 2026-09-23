@@ -1,15 +1,16 @@
 # Copilot instructions for toggle-slicer-visual
 
 This is a Power BI custom visual (powerbi-visuals-api SDK): a group of on/off toggles, one per
-bound field, each driving its own disconnected-table filter via `host.applyJsonFilter()` (one
-basic filter per field, all persisted together in `general.filter`). Read [CLAUDE.md](../CLAUDE.md) before
+column of a single disconnected group table (built with CROSSJOIN so it holds every On/Off
+combination), each column filtered via `host.applyJsonFilter()` (one basic filter per column, all
+persisted together in `general.filter`). Read [CLAUDE.md](../CLAUDE.md) before
 reviewing - it documents several intentional decisions that are not bugs:
 
 - `tsconfig.json` intentionally omits `strict` — enabling it breaks the SDK's generated
   `visualPlugin.ts` wrapper, which passes an optional `options?` into a required-options
   constructor.
 - The `toggle` role's `dataReductionAlgorithm` is capped at 10000, not 2 per field, on purpose -
-  fields from unrelated tables arrive cross-joined (2^N rows), and a mis-bound field must still
+  the group table's columns arrive as every combination (2^N rows), and a mis-bound field must still
   surface its extra values to fail validation.
 - `toggleSettings.onLabel`/`offLabel` values (and placeholders) are deliberately NOT
   localized — they're per-report Format-pane text, not fixed visual chrome.

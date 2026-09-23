@@ -54,22 +54,31 @@ const OFF_VALUES = new Set(["off", "false", "0"]);
 /**
  * Starter DAX shown (with Copy buttons) on the landing page, matching README's own documented
  * example exactly. DAX identifiers aren't localized - like the on/off label values themselves,
- * they're literal code to paste verbatim, not natural-language UI text. The table's *column* name
- * ("Show budget") is what the visual shows as that toggle's name, which is why the example gives
- * it a readable, sentence-case name rather than a generic "Toggle".
+ * they're literal code to paste verbatim, not natural-language UI text.
+ *
+ * One table per *group*, one column per toggle: each column's name ("Show budget") is what the
+ * visual shows as that toggle's name, and each column is its own field in the Toggles well.
+ * CROSSJOIN gives the table every On/Off combination, which is what lets each column be filtered
+ * independently - filtering "Show budget" to On still leaves both values of every other column.
+ * The measures compare against "On" (or "Off" for Group enable) rather than using SELECTEDVALUE's
+ * fallback argument, so an unfiltered column - first load, before any click - reads as Off (or
+ * enabled) exactly as readStatesFromFilters() renders it.
  */
-const TOGGLE_TABLE_DAX = `Show Budget = DATATABLE(
-    "Show budget", STRING,
-    "Value", INTEGER,
-    {
-        {"On", 1},
-        {"Off", 0}
-    }
+const TOGGLE_TABLE_DAX = `Budget Options =
+CROSSJOIN(
+    DATATABLE("Show budget", STRING, {{"On"}, {"Off"}}),
+    DATATABLE("Include ED", STRING, {{"On"}, {"Off"}}),
+    DATATABLE("Exclude outliers", STRING, {{"On"}, {"Off"}})
 )`;
-const TOGGLE_MEASURE_DAX = `Show Budget State = SELECTEDVALUE('Show Budget'[Value], 0)`;
+const TOGGLE_MEASURE_DAX = `Show Budget State =
+IF(
+    SELECTEDVALUE('Budget Options'[Show budget]) = "On",
+    1,
+    0
+)`;
 const GROUP_GATE_DAX = `Show Budget Active =
 IF(
-    SELECTEDVALUE('Group Enable'[Value], 1) = 1,
+    SELECTEDVALUE('Budget Options'[Options enabled]) <> "Off",
     [Show Budget State],
     0
 )`;
@@ -334,7 +343,7 @@ export class Visual implements IVisual {
         return landingPageEl;
     }
 
-    /** The copyable "table per toggle, measure per toggle, optional group gate" starter DAX guide - see buildLandingPage(). */
+    /** The copyable "one table per group, a measure per toggle, optional group gate" starter DAX guide - see buildLandingPage(). */
     private buildLandingGuide(): HTMLElement {
         const guideEl = document.createElement("div");
         guideEl.className = "toggle-slicer__landing-guide";
@@ -620,11 +629,13 @@ export class Visual implements IVisual {
     }
 
     /**
-     * Splits the categorical columns by data role. Fields from separate (unrelated) tables arrive
-     * as one cross-joined set of rows - every combination of every field's values - so each
-     * column is deduped independently later in parseColumn() rather than read row-by-row. Toggles
-     * are sorted by their position in the field well (rolesIndex, when the host provides it -
-     * it's not in the API typings) so the rows render in the order the report author dropped them.
+     * Splits the categorical columns by data role. Several columns reach the visual as one set of
+     * rows holding every combination of their values - the group table's own CROSSJOIN rows when
+     * they share a table (the recommended pattern), or a query-time cross join when they come from
+     * unrelated tables - so each column is deduped independently later in parseColumn() rather
+     * than read row-by-row. Toggles are sorted by their position in the field well (rolesIndex,
+     * when the host provides it - it's not in the API typings) so the rows render in the order the
+     * report author dropped them.
      */
     private getColumns(dataView: powerbi.DataView | undefined): { enableColumn?: DataViewCategoryColumn; toggleColumns: DataViewCategoryColumn[] } {
         const categories = (dataView && dataView.categorical && dataView.categorical.categories) || [];
@@ -747,8 +758,9 @@ export class Visual implements IVisual {
     /**
      * general.filter holds one basic filter per bound field (see applyStates()). A field with no
      * filter yet (first load, or a toggle newly added to the well) renders Off, matching the
-     * starter DAX's SELECTEDVALUE(..., 0) fallback - except Group enable, which renders On so a
-     * freshly built group isn't born disabled; its starter DAX uses a fallback of 1 to match.
+     * starter DAX's `SELECTEDVALUE(...) = "On"` test on an unfiltered column - except Group
+     * enable, which renders On so a freshly built group isn't born disabled; its starter DAX
+     * tests `<> "Off"` to match.
      */
     private readStatesFromFilters(filters: powerbi.IFilter[] | undefined): void {
         const states = new Map<string, boolean>();

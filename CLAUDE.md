@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
  3. ~~Add radio option as graphical skin of toggle.~~ Done - see `toggleSettings.controlStyle` below.
  4. ~~Change the color anf veritcle alignment of the Toggle icon png to be easier to see and better aligned.~~ Done - `assets/icon.png` regenerated with a taller/darker track, centered both ways in the 20x20 canvas.
  5. ~~Convert the single toggle into a toggle group (dynamic field well, container border styles, Only one active / Master switch / Group enable rules).~~ Done - see "Toggle group" notes below.
- 6. Verify in Power BI Desktop/Service against a real model (the group was built and tested against a mock host - see Testing below): cross-joined multi-field data view, `rolesIndex` ordering, the array `applyJsonFilter()` round-trip, and Sync slicers with several filtered columns. `assets/icon.png` still shows a single switch.
+ 6. Verify in Power BI Desktop/Service against a real model (the group was built and tested against a mock host - see Testing below): multi-column data view (one CROSSJOIN group table), `rolesIndex` ordering, the array `applyJsonFilter()` round-trip, and Sync slicers with several filtered columns. `assets/icon.png` still shows a single switch.
 
 
 ## Project Overview
@@ -22,28 +22,31 @@ The visual keeps its original `toggleSlicerVisual` name/GUID and `toggle` data r
 
 ## How It Works
 
-Each toggle is bound to its **own** small disconnected table, whose column name becomes the row's name:
+The whole group is **one** disconnected table with **one On/Off column per toggle**; each column's name becomes that row's name:
 
 ```
-Show Budget = DATATABLE(
-    "Show budget", STRING,
-    "Value", INTEGER,
-    {
-        {"On", 1},
-        {"Off", 0}
-    }
+Budget Options =
+CROSSJOIN(
+    DATATABLE("Show budget", STRING, {{"On"}, {"Off"}}),
+    DATATABLE("Include ED", STRING, {{"On"}, {"Off"}}),
+    DATATABLE("Exclude outliers", STRING, {{"On"}, {"Off"}})
 )
 
-Show Budget State = SELECTEDVALUE('Show Budget'[Value], 0)
+Show Budget State =
+IF(
+    SELECTEDVALUE('Budget Options'[Show budget]) = "On",
+    1,
+    0
+)
 ```
 
 The `toggle` data role (well name "Toggles") accepts up to 12 fields - Power BI shows a fresh empty slot below each one dropped in, which is what makes the well "dynamic". An optional `groupEnable` role (max 1) takes a Group enable field built the same way. Both roles feed one categorical mapping via `categories.select`, and each column's `source.roles` says which role it came from.
 
 Clicking writes **real slicer-style basic filters** via `host.applyJsonFilter(filters[], "general", "filter", FilterAction.merge)` - one `IN {value}` filter per bound field, the whole group's set written at once (general.filter holds a single array for the visual). State is read back from `options.jsonFilters` on every `update()`, matched to rows by filter target (table + column). This is what keeps each row DAX-readable, bookmarkable and syncable. **The visual is a rendering layer over filters - it does not use `persistProperties` for state, because that would not be readable by DAX.** An Off row applies its Off value rather than clearing its filter, because the bridge pattern (README → Tables and bridges) maps the Off row to every member.
 
-Why one table per toggle, not one table with several On/Off columns: independent filtering needs independent tables. Fields from unrelated tables reach the visual **cross-joined** (every combination of every field's values, 2^N rows), so `parseColumn()` de-duplicates each column on its own rather than reading rows. The 12-field cap keeps that cross join small (2^13 = 8192 rows with Group enable, under the 10000-row `dataReductionAlgorithm`).
+Why `CROSSJOIN`: the table must hold **every combination** of On/Off values, so a filter on one column never constrains another - filtering "Show budget" to On still leaves both values of every other column. (A two-row table with several columns would tie them together.) The visual's own query over several columns therefore returns every combination (2^N rows - the table's own rows when they share a table, or a query-time cross join if a report author binds columns from unrelated tables, which also works), so `parseColumn()` de-duplicates each column on its own rather than reading rows. The 12-field cap keeps that small (2^13 = 8192 rows with Group enable, under the 10000-row `dataReductionAlgorithm`). The bridge pattern (README → Tables and bridges) keys a single shared bridge on a combination-key column, since one group table can only have one active relationship path to a given dimension.
 
-The bound column's two values don't have to be literally "On"/"Off" text — `ON_VALUES`/`OFF_VALUES` in `visual.ts` (matched case-insensitively, trimmed, via `normalize()`) also accept `"true"`/`"false"` and `"1"`/`"0"`. Each field is validated independently (exactly two distinct values, one On alias, one Off alias), so fields in one group can use different conventions.
+The bound column's two values don't have to be literally "On"/"Off" text — `ON_VALUES`/`OFF_VALUES` in `visual.ts` (matched case-insensitively, trimmed, via `normalize()`) also accept `"true"`/`"false"` and `"1"`/`"0"`. Each column is validated independently (exactly two distinct values, one On alias, one Off alias), so columns in one group can use different conventions. A report built with the old single-switch `ToggleTable` (two rows, one column) is simply a group table with one toggle.
 
 ## Key Files
 
@@ -75,7 +78,7 @@ Output package lands in `dist/*.pbiviz`.
 ## Implementation Notes
 
 - Keep formatting (colours, labels) in `capabilities.json` `objects` and read them via `dataView.metadata.objects` in `update()` — don't hardcode colours in `visual.ts`, so users can theme it per-report from the Format pane.
-- Handle the "no filter yet" render state (first load, or a field newly added to the well) by matching the starter DAX's `SELECTEDVALUE` fallback: toggles render **Off** (fallback 0), the Group enable row renders **On** (fallback 1, so a new group isn't born disabled) - see `readStatesFromFilters()`.
+- Handle the "no filter yet" render state (first load, or a field newly added to the well) by matching how the starter DAX reads an unfiltered column: toggles render **Off** (`SELECTEDVALUE(...) = "On"` is false with both values in play), the Group enable row renders **On** (`<> "Off"`, so a new group isn't born disabled) - see `readStatesFromFilters()`. The starter DAX deliberately compares values instead of relying on `SELECTEDVALUE`'s fallback argument, so the two can't drift apart.
 - The `dataReductionAlgorithm` is capped at 10000 rows, not 2 per field — it has to hold the full cross join (see How It Works), and a mis-bound field (e.g. a real column with several distinct values) must still surface its extra values so `parseColumn()` rejects it rather than silently truncating it to two.
 - **Toggle group model:** `this.items: GroupItem[]` is rebuilt on every `update()` in display order — the Group enable row (`kind: "enable"`, level 0), then the visual-only master row (`kind: "master"`, no field/filter/identity), then one `kind: "toggle"` row per field, each level one deeper than the headers above it. Toggles are ordered by the undocumented-in-typings `source.rolesIndex.toggle[0]` (well position) when the host supplies it, falling back to data view order; a field dropped in twice is de-duplicated by `queryName`. Rows' DOM is a pool (`ensureRowPool()`) reused across renders so keyboard focus survives the re-render that follows each click; event handlers look their `GroupItem` up by index at event time.
 - **Group rules** (`handleClick()`), always written as one `applyStates()` call covering every field: **Only one active** turns every other child Off when one turns On (turning the active one Off leaves none On, except a radio-skinned row, which can't be clicked Off - native radio behaviour); **Master switch** sets every child to the opposite of the master's current state (Mixed counts as Off, so a Mixed master turns all On) - under Only one active it instead turns On just the first child, and `updateMasterState()` reads On as "any child On" rather than "all"; **Group enable** flips only itself - `isDisabled()` makes every other row (master included) greyed out, `aria-disabled`, out of the tab order and click-inert, while its state and filter stay untouched (per the requirement "disabled, not turned off"). Measures gate on the enable field themselves (README → Group enable table).
@@ -87,7 +90,7 @@ Output package lands in `dist/*.pbiviz`.
 - **Background:** `containerSettings.showBackground`/`backgroundColor` (formerly `toggleSettings.showBackground`, moved when the fill became the group's rather than one switch's; default off, so the visual shows through the report's own card/canvas) set `frameEl`'s inline `background-color` in `applyContainer()`. `ContainerSettingsCardSettings.onPreProcess()` hides the colour swatch while it's off, and hides border colour/width while Border style is None. Their Format-pane labels say "**group** background", not just "Background" — every visual also gets Power BI's own native General → Background, which this code can't touch; without the qualifier a report author toggling one while looking at the other would conclude the control is broken.
 - **Sync slicers / Filters pane:** `capabilities.json` declares a `general.filter` object plus `supportsSynchronizingFilterState: true` — the same contract native slicers use (the flag was documented but missing before the group conversion). The group writes an *array* of per-column filters to that one property; sync behaviour with several filtered columns still needs confirming in Power BI (Todo 6).
 - **Landing page vs. validation message:** `update()` distinguishes "nothing bound to Toggles yet" (landing page, via `supportsLandingPage: true` - a Group enable field alone still shows it) from "a field is bound but isn't an On/Off pair" (validation message, naming the offending field via `Visual_Validation_OnOffRequired`'s `{0}`) via `showSection()`, which shows exactly one of the frame/message/landing elements. The landing page (`buildLandingPage()`) mirrors the host's own empty-state look — an info icon (hand-built `SVGElement`s) plus heading, a divider, a greyed-out skeleton of a three-row group with the lower rows indented (`@keyframes toggle-slicer-skeleton-pulse`, disabled under `prefers-reduced-motion`), and a hint naming the accepted value formats and the one-field-per-toggle model.
-- **Starter-DAX guide:** `buildLandingGuide()` adds a copyable step-by-step guide (table per toggle, its measure, "repeat for each toggle", then the optional Group enable gated measure - `TOGGLE_TABLE_DAX`/`TOGGLE_MEASURE_DAX`/`GROUP_GATE_DAX` in `visual.ts`, matching README's DAX verbatim) below the hint. It's hidden until the `@container toggle-slicer (min-width: 260px) and (min-height: 200px)` query in `visual.less` reveals it (and widens `.toggle-slicer__landing`'s `max-width`); the landing page scrolls if it still doesn't fit. `copyToClipboard()` tries the async Clipboard API first and falls back to a hidden-textarea-plus-`execCommand("copy")` approach - some sandboxed iframe contexts allow one but not the other - and the clicked button's label briefly confirms "Copied!"/"Copy failed" either way.
+- **Starter-DAX guide:** `buildLandingGuide()` adds a copyable step-by-step guide (the CROSSJOIN group table, a per-toggle measure, "drag each column in", then the optional Group enable column and gated measure - `TOGGLE_TABLE_DAX`/`TOGGLE_MEASURE_DAX`/`GROUP_GATE_DAX` in `visual.ts`, matching README's DAX verbatim) below the hint. It's hidden until the `@container toggle-slicer (min-width: 260px) and (min-height: 200px)` query in `visual.less` reveals it (and widens `.toggle-slicer__landing`'s `max-width`, again to 420px at `min-width: 440px` so the CROSSJOIN lines sit unscrolled); code blocks scroll sideways and the landing page scrolls vertically if it still doesn't fit. `copyToClipboard()` tries the async Clipboard API first and falls back to a hidden-textarea-plus-`execCommand("copy")` approach - some sandboxed iframe contexts allow one but not the other - and the clicked button's label briefly confirms "Copied!"/"Copy failed" either way.
 - **Tooltip:** wired manually per row via `host.tooltipService` (pointerenter/pointermove/pointerleave on each switch), showing the row's name and current state ("Mixed" for a partly-on master), since this visual has no measure role for the host to build one from. `capabilities.json` sets `tooltips.supportedTypes.default: false` to make that explicit.
 - **Responsive sizing** is pure CSS via container queries (`container-type: size` on the root element) — state labels hide below a 120px width threshold, and toggles scale with the tile's height shared across rows (see Size below) — rather than reading `options.viewport` in TypeScript.
 - **Show/hide labels:** `toggleSettings.showLabels` (a `ToggleSwitch` in the Format pane, default **off**) is applied in `render()` as an inline `display` style on the label elements, not a CSS class — inline styles always beat the stylesheet's container-query rule, so this Format-pane override reliably wins regardless of the visual's current size, and setting it back to `""` (not toggling a class) cleanly restores the size-based auto-hide behaviour. The switch's `aria-label` always names both states regardless of this setting, since a report author hiding the visible labels makes the accessible name more important, not less.
