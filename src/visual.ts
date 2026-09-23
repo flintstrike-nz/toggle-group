@@ -43,30 +43,73 @@ import ITooltipService = powerbi.extensibility.ITooltipService;
 import { VisualFormattingSettingsModel } from "./settings";
 
 /**
- * Matches the disconnected ToggleTable[Toggle] category values this visual expects. Accepts a few
- * common conventions for the same two states, not just the "On"/"Off" text used in CLAUDE.md's
- * documented DATATABLE example, so a report author's own table doesn't have to match it exactly.
+ * Matches each bound On/Off field's category values. Accepts a few common conventions for the
+ * same two states, not just the "On"/"Off" text used in the starter DAX below, so a report
+ * author's own tables don't have to match it exactly - and each field is checked independently,
+ * so different toggles in the same group can use different conventions.
  */
 const ON_VALUES = new Set(["on", "true", "1"]);
 const OFF_VALUES = new Set(["off", "false", "0"]);
 
 /**
- * Starter DAX shown (with a Copy button) on the landing page, matching CLAUDE.md/README's own
- * documented example exactly. DAX identifiers aren't localized - like the on/off label values
- * themselves, they're literal code to paste verbatim, not natural-language UI text.
+ * Starter DAX shown (with Copy buttons) on the landing page, matching README's own documented
+ * example exactly. DAX identifiers aren't localized - like the on/off label values themselves,
+ * they're literal code to paste verbatim, not natural-language UI text. The table's *column* name
+ * ("Show budget") is what the visual shows as that toggle's name, which is why the example gives
+ * it a readable, sentence-case name rather than a generic "Toggle".
  */
-const TOGGLE_TABLE_DAX = `ToggleTable = DATATABLE(
-    "Toggle", STRING,
+const TOGGLE_TABLE_DAX = `Show Budget = DATATABLE(
+    "Show budget", STRING,
     "Value", INTEGER,
     {
         {"On", 1},
         {"Off", 0}
     }
 )`;
-const TOGGLE_MEASURE_DAX = `ToggleState = SELECTEDVALUE(ToggleTable[Value], 0)`;
+const TOGGLE_MEASURE_DAX = `Show Budget State = SELECTEDVALUE('Show Budget'[Value], 0)`;
+const GROUP_GATE_DAX = `Show Budget Active =
+IF(
+    SELECTEDVALUE('Group Enable'[Value], 1) = 1,
+    [Show Budget State],
+    0
+)`;
+
+type FilterTarget = { table: string; column: string };
+
+/**
+ * One row of the group. "toggle" and "enable" rows are each bound to their own On/Off field and
+ * own one basic filter in general.filter; "master" is a visual-only header whose state is always
+ * derived from its children (see updateMasterState()), so it has no field, filter or identity.
+ */
+interface GroupItem {
+    kind: "enable" | "master" | "toggle";
+    name: string;
+    // Indent depth - 0 for a header at the very top, +1 below each header above it.
+    level: number;
+    isOn: boolean;
+    // Master only: some-but-not-all children On (never set in Only one active mode - see
+    // updateMasterState()).
+    isMixed: boolean;
+    category?: DataViewCategoryColumn;
+    target?: FilterTarget;
+    onValue?: powerbi.PrimitiveValue;
+    offValue?: powerbi.PrimitiveValue;
+    onRowIndex?: number;
+    offRowIndex?: number;
+}
+
+/** The DOM for one row - pooled and reused across renders (see ensureRowPool()). */
+interface RowElements {
+    rowEl: HTMLElement;
+    nameEl: HTMLElement;
+    cellEl: HTMLElement;
+    offLabelEl: HTMLElement;
+    onLabelEl: HTMLElement;
+    switchEl: HTMLElement;
+}
 
 // Gives each Visual instance's title element a unique id (a report page can have more than one of
-// these visuals), for the switch's aria-describedby - see render()'s title handling.
+// these visuals), for the group's aria-labelledby - see render()'s title handling.
 let nextInstanceId = 0;
 
 export class Visual implements IVisual {
@@ -79,31 +122,27 @@ export class Visual implements IVisual {
     private formattingSettingsService: FormattingSettingsService;
 
     private target: HTMLElement;
+    private frameEl: HTMLElement;
     private titleWrapEl: HTMLElement;
     private titleEl: HTMLElement;
-    private container: HTMLElement;
-    private offLabelEl: HTMLElement;
-    private onLabelEl: HTMLElement;
-    private switchEl: HTMLElement;
-    private knobEl: HTMLElement;
-    private checkmarkEl: SVGElement;
+    private groupEl: HTMLElement;
     private messageEl: HTMLElement;
     private landingPageEl: HTMLElement;
     private landingHeadingEl: HTMLElement;
     private landingHintEl: HTMLElement;
     private landingCopyStatusEl: HTMLElement;
 
-    private categoryIdentities: ISelectionId[] = [];
-    private filterTarget: { table: string; column: string } | null = null;
-    private categoryValues: powerbi.PrimitiveValue[] = [];
-    private onIndex: number = -1;
-    private offIndex: number = -1;
-    private isOn: boolean = false;
-    // Whether titleSettings.text has ever been explicitly set by a report author (checked against
-    // the raw dataView object, not the populated settings model, which can't tell "never touched"
-    // apart from "explicitly cleared to blank") - computed once per update() since render() (called
-    // from places with no dataView of their own, like the bookmark-sync callback) needs it too.
+    private items: GroupItem[] = [];
+    private rows: RowElements[] = [];
+    // Whether titleSettings.text / groupSettings.masterLabel have ever been explicitly set by a
+    // report author (checked against the raw dataView object, not the populated settings model,
+    // which can't tell "never touched" apart from "explicitly cleared to blank") - computed once
+    // per update() since render() needs them too.
     private hasCustomTitleText: boolean = false;
+    private hasCustomMasterLabel: boolean = false;
+    // The stale-filter set cleanUpStaleFilters() last tried to remove, so a host that doesn't echo
+    // the cleaned-up jsonFilters back can't trap update() in a re-apply loop.
+    private lastStaleCleanup: string = "";
     // Per-button pending "restore the Copy label" timers, so a second click during the ~1.5s
     // confirmation window replaces (rather than races) the first click's timer - see
     // copyToClipboard().
@@ -123,9 +162,14 @@ export class Visual implements IVisual {
         this.target = options.element;
         this.target.classList.add("toggle-slicer-visual");
 
+        // The bordered box (containerSettings) around everything the group renders - the title
+        // included, like a fieldset around its legend.
+        this.frameEl = document.createElement("div");
+        this.frameEl.className = "toggle-group-frame";
+
         // A static heading this visual draws itself (separate from Power BI's own native visual
-        // title, which this code has no control over) - wraps the switch/label container so it can
-        // sit beside it (Inline) or above it (Above) via the same layout scheme as the on/off labels.
+        // title, which this code has no control over) - wraps the group so it can sit above it
+        // (Above) or beside it (Inline left/right).
         this.titleWrapEl = document.createElement("div");
         this.titleWrapEl.className = "toggle-slicer-wrap";
 
@@ -133,40 +177,9 @@ export class Visual implements IVisual {
         this.titleEl.className = "toggle-slicer__title";
         this.titleEl.id = `toggle-slicer-title-${++nextInstanceId}`;
 
-        this.container = document.createElement("div");
-        this.container.className = "toggle-slicer";
-
-        this.offLabelEl = document.createElement("span");
-        this.offLabelEl.className = "toggle-slicer__label toggle-slicer__label--off";
-
-        this.switchEl = document.createElement("div");
-        this.switchEl.className = "toggle-slicer__switch";
-        this.switchEl.setAttribute("role", "switch");
-        this.switchEl.setAttribute("tabindex", "0");
-        this.switchEl.setAttribute("aria-checked", "false");
-
-        const trackEl = document.createElement("div");
-        trackEl.className = "toggle-slicer__track";
-
-        this.knobEl = document.createElement("div");
-        this.knobEl.className = "toggle-slicer__knob";
-        trackEl.appendChild(this.knobEl);
-
-        // Checkbox skin's "on" mark - lives alongside the toggle skin's knob in the same track
-        // rather than a separate DOM subtree, so both skins pick up the track's own colour/border/
-        // depth-effect styling (applyColors()/is-depth) for free; visual.less shows only the one
-        // that matches toggleSettings.controlStyle (see render()'s is-checkbox class).
-        this.checkmarkEl = this.buildCheckmarkIcon();
-        trackEl.appendChild(this.checkmarkEl);
-
-        this.switchEl.appendChild(trackEl);
-
-        this.onLabelEl = document.createElement("span");
-        this.onLabelEl.className = "toggle-slicer__label toggle-slicer__label--on";
-
-        this.container.appendChild(this.offLabelEl);
-        this.container.appendChild(this.switchEl);
-        this.container.appendChild(this.onLabelEl);
+        // Rows are added/removed by ensureRowPool() as fields are bound/unbound.
+        this.groupEl = document.createElement("div");
+        this.groupEl.className = "toggle-group";
 
         this.messageEl = document.createElement("div");
         this.messageEl.className = "toggle-slicer__message";
@@ -174,33 +187,93 @@ export class Visual implements IVisual {
         this.landingPageEl = this.buildLandingPage();
 
         this.titleWrapEl.appendChild(this.titleEl);
-        this.titleWrapEl.appendChild(this.container);
+        this.titleWrapEl.appendChild(this.groupEl);
+        this.frameEl.appendChild(this.titleWrapEl);
 
-        this.target.appendChild(this.titleWrapEl);
+        this.target.appendChild(this.frameEl);
         this.target.appendChild(this.messageEl);
         this.target.appendChild(this.landingPageEl);
+    }
 
-        this.switchEl.addEventListener("click", () => this.handleToggleClick());
-        this.switchEl.addEventListener("keydown", (event: KeyboardEvent) => {
-            if (event.key === " " || event.key === "Enter") {
-                event.preventDefault();
-                this.handleToggleClick();
-            }
-        });
-        this.switchEl.addEventListener("contextmenu", (event: MouseEvent) => this.handleContextMenu(event));
+    /**
+     * Builds one pooled row: a name cell plus the switch cell (the pre-group single toggle's own
+     * off label / switch / on label trio, unchanged). Event handlers look the row's GroupItem up
+     * by index at event time rather than capturing it, since the pool outlives any one update().
+     */
+    private buildRow(index: number): RowElements {
+        const rowEl = document.createElement("div");
+        rowEl.className = "toggle-group__row";
 
-        this.switchEl.addEventListener("pointerenter", (event: PointerEvent) => this.showTooltip(event));
-        this.switchEl.addEventListener("pointermove", (event: PointerEvent) => this.moveTooltip(event));
-        this.switchEl.addEventListener("pointerleave", (event: PointerEvent) => this.hideTooltip(event));
+        const nameEl = document.createElement("span");
+        nameEl.className = "toggle-group__name";
+
+        const cellEl = document.createElement("div");
+        cellEl.className = "toggle-slicer";
+
+        const offLabelEl = document.createElement("span");
+        offLabelEl.className = "toggle-slicer__label toggle-slicer__label--off";
+
+        const switchEl = document.createElement("div");
+        switchEl.className = "toggle-slicer__switch";
+
+        const trackEl = document.createElement("div");
+        trackEl.className = "toggle-slicer__track";
+
+        // Toggle skin's sliding knob, and the radio skin's centre dot - see visual.less.
+        const knobEl = document.createElement("div");
+        knobEl.className = "toggle-slicer__knob";
+        trackEl.appendChild(knobEl);
+
+        // Checkbox skin's "on"/"mixed" mark - lives alongside the knob in the same track rather
+        // than a separate DOM subtree, so every skin picks up the track's own colour/border/
+        // depth-effect styling (applyColors()/is-depth) for free; visual.less shows only the parts
+        // that match the row's skin (see renderSwitch()'s is-checkbox/is-radio classes).
+        trackEl.appendChild(this.buildCheckmarkIcon());
+
+        switchEl.appendChild(trackEl);
+
+        const onLabelEl = document.createElement("span");
+        onLabelEl.className = "toggle-slicer__label toggle-slicer__label--on";
+
+        cellEl.appendChild(offLabelEl);
+        cellEl.appendChild(switchEl);
+        cellEl.appendChild(onLabelEl);
+
+        rowEl.appendChild(nameEl);
+        rowEl.appendChild(cellEl);
+
+        switchEl.addEventListener("click", () => this.handleClick(index));
+        // Clicking a row's name toggles it too, like a native <label> - a bigger hit target than
+        // the switch alone, which matters most for the small checkbox/radio skins.
+        nameEl.addEventListener("click", () => this.handleClick(index));
+        switchEl.addEventListener("keydown", (event: KeyboardEvent) => this.handleKeyDown(event, index));
+        switchEl.addEventListener("contextmenu", (event: MouseEvent) => this.handleContextMenu(event, index));
+        switchEl.addEventListener("pointerenter", (event: PointerEvent) => this.showTooltip(event, index));
+        switchEl.addEventListener("pointermove", (event: PointerEvent) => this.moveTooltip(event));
+        switchEl.addEventListener("pointerleave", (event: PointerEvent) => this.hideTooltip(event));
+
+        return { rowEl, nameEl, cellEl, offLabelEl, onLabelEl, switchEl };
+    }
+
+    /** Grows/shrinks the row pool to match this.items, reusing existing rows so focus survives a re-render. */
+    private ensureRowPool(): void {
+        while (this.rows.length < this.items.length) {
+            const row = this.buildRow(this.rows.length);
+            this.rows.push(row);
+            this.groupEl.appendChild(row.rowEl);
+        }
+        while (this.rows.length > this.items.length) {
+            this.rows.pop().rowEl.remove();
+        }
     }
 
     /**
      * Builds the "no field bound yet" landing page: an info icon + instructional heading (matching
      * the host's own generic "Select or drag fields..." placeholder), a divider, a greyed-out
-     * skeleton of the switch so the placeholder previews what will render, a compact hint about the
-     * accepted On/Off value formats, and (once the tile is big enough - see the min-width/min-height
-     * container query in visual.less) a copyable starter DAX guide so a report author can build the
-     * disconnected ToggleTable pattern without leaving Power BI Desktop.
+     * skeleton of a small toggle group so the placeholder previews what will render, a compact
+     * hint about the one-field-per-toggle model, and (once the tile is big enough - see the
+     * min-width/min-height container query in visual.less) a copyable starter DAX guide so a report
+     * author can build the tables without leaving Power BI Desktop.
      */
     private buildLandingPage(): HTMLElement {
         const landingPageEl = document.createElement("div");
@@ -217,11 +290,27 @@ export class Visual implements IVisual {
         const dividerEl = document.createElement("div");
         dividerEl.className = "toggle-slicer__landing-divider";
 
-        const skeletonTrackEl = document.createElement("div");
-        skeletonTrackEl.className = "toggle-slicer__landing-skeleton-track";
-        const skeletonKnobEl = document.createElement("div");
-        skeletonKnobEl.className = "toggle-slicer__landing-skeleton-knob";
-        skeletonTrackEl.appendChild(skeletonKnobEl);
+        // Three skeleton rows - a name bar plus a track - with the lower two indented, previewing
+        // a master switch over its children.
+        const skeletonEl = document.createElement("div");
+        skeletonEl.className = "toggle-slicer__landing-skeleton";
+        for (let i = 0; i < 3; i++) {
+            const skeletonRowEl = document.createElement("div");
+            skeletonRowEl.className = "toggle-slicer__landing-skeleton-row";
+            if (i > 0) {
+                skeletonRowEl.classList.add("is-indented");
+            }
+            const skeletonNameEl = document.createElement("div");
+            skeletonNameEl.className = "toggle-slicer__landing-skeleton-name";
+            const skeletonTrackEl = document.createElement("div");
+            skeletonTrackEl.className = "toggle-slicer__landing-skeleton-track";
+            const skeletonKnobEl = document.createElement("div");
+            skeletonKnobEl.className = "toggle-slicer__landing-skeleton-knob";
+            skeletonTrackEl.appendChild(skeletonKnobEl);
+            skeletonRowEl.appendChild(skeletonNameEl);
+            skeletonRowEl.appendChild(skeletonTrackEl);
+            skeletonEl.appendChild(skeletonRowEl);
+        }
 
         this.landingHintEl = document.createElement("div");
         this.landingHintEl.className = "toggle-slicer__landing-hint";
@@ -237,7 +326,7 @@ export class Visual implements IVisual {
 
         landingPageEl.appendChild(headerEl);
         landingPageEl.appendChild(dividerEl);
-        landingPageEl.appendChild(skeletonTrackEl);
+        landingPageEl.appendChild(skeletonEl);
         landingPageEl.appendChild(this.landingHintEl);
         landingPageEl.appendChild(this.buildLandingGuide());
         landingPageEl.appendChild(this.landingCopyStatusEl);
@@ -245,28 +334,25 @@ export class Visual implements IVisual {
         return landingPageEl;
     }
 
-    /** The copyable "create the table, then the measure" starter DAX guide - see buildLandingPage(). */
+    /** The copyable "table per toggle, measure per toggle, optional group gate" starter DAX guide - see buildLandingPage(). */
     private buildLandingGuide(): HTMLElement {
         const guideEl = document.createElement("div");
         guideEl.className = "toggle-slicer__landing-guide";
 
-        const tableStepEl = document.createElement("div");
-        tableStepEl.className = "toggle-slicer__landing-guide-step";
-        tableStepEl.textContent = this.localizationManager.getDisplayName("Visual_LandingPage_GuideTableIntro");
+        const step = (key: string): HTMLElement => {
+            const stepEl = document.createElement("div");
+            stepEl.className = "toggle-slicer__landing-guide-step";
+            stepEl.textContent = this.localizationManager.getDisplayName(key);
+            return stepEl;
+        };
 
-        const measureStepEl = document.createElement("div");
-        measureStepEl.className = "toggle-slicer__landing-guide-step";
-        measureStepEl.textContent = this.localizationManager.getDisplayName("Visual_LandingPage_GuideMeasureIntro");
-
-        const outroEl = document.createElement("div");
-        outroEl.className = "toggle-slicer__landing-guide-step";
-        outroEl.textContent = this.localizationManager.getDisplayName("Visual_LandingPage_GuideOutro");
-
-        guideEl.appendChild(tableStepEl);
+        guideEl.appendChild(step("Visual_LandingPage_GuideTableIntro"));
         guideEl.appendChild(this.buildCodeBlock(TOGGLE_TABLE_DAX, "Visual_LandingPage_CopyTable_AriaLabel"));
-        guideEl.appendChild(measureStepEl);
+        guideEl.appendChild(step("Visual_LandingPage_GuideMeasureIntro"));
         guideEl.appendChild(this.buildCodeBlock(TOGGLE_MEASURE_DAX, "Visual_LandingPage_CopyMeasure_AriaLabel"));
-        guideEl.appendChild(outroEl);
+        guideEl.appendChild(step("Visual_LandingPage_GuideRepeat"));
+        guideEl.appendChild(step("Visual_LandingPage_GuideEnableIntro"));
+        guideEl.appendChild(this.buildCodeBlock(GROUP_GATE_DAX, "Visual_LandingPage_CopyGate_AriaLabel"));
 
         return guideEl;
     }
@@ -409,9 +495,10 @@ export class Visual implements IVisual {
     }
 
     /**
-     * The checkbox skin's checkmark - hand-built like buildInfoIcon() rather than an image asset.
-     * Its colour comes from --toggle-knob-color-on (visual.less), the same variable the toggle
-     * skin's knob uses once "on", since the checkmark is only ever shown in the "on" state.
+     * The checkbox skin's mark - hand-built like buildInfoIcon() rather than an image asset. Holds
+     * both a tick (shown when On) and a dash (shown when a master row is Mixed); visual.less picks
+     * which one is visible. Its colour comes from --toggle-knob-color-on, the same variable the
+     * toggle skin's knob uses once "on", since the mark is only ever shown in an on/mixed state.
      */
     private buildCheckmarkIcon(): SVGElement {
         const svgNS = "http://www.w3.org/2000/svg";
@@ -421,14 +508,22 @@ export class Visual implements IVisual {
         icon.setAttribute("aria-hidden", "true");
 
         const check = document.createElementNS(svgNS, "path");
+        check.setAttribute("class", "toggle-slicer__checkmark-tick");
         check.setAttribute("d", "M3.5 8.5L6.5 11.5L12.5 4.5");
-        check.setAttribute("fill", "none");
-        check.setAttribute("stroke", "currentColor");
-        check.setAttribute("stroke-width", "2");
-        check.setAttribute("stroke-linecap", "round");
-        check.setAttribute("stroke-linejoin", "round");
 
-        icon.appendChild(check);
+        const dash = document.createElementNS(svgNS, "path");
+        dash.setAttribute("class", "toggle-slicer__checkmark-dash");
+        dash.setAttribute("d", "M4 8H12");
+
+        for (const path of [check, dash]) {
+            path.setAttribute("fill", "none");
+            path.setAttribute("stroke", "currentColor");
+            path.setAttribute("stroke-width", "2");
+            path.setAttribute("stroke-linecap", "round");
+            path.setAttribute("stroke-linejoin", "round");
+            icon.appendChild(path);
+        }
+
         return icon;
     }
 
@@ -438,49 +533,70 @@ export class Visual implements IVisual {
         try {
             const dataView = options.dataViews && options.dataViews[0];
             this.formattingSettings = this.formattingSettingsService.populateFormattingSettingsModel(VisualFormattingSettingsModel, dataView);
-            const titleSettingsObjects = dataView && dataView.metadata && dataView.metadata.objects && dataView.metadata.objects["titleSettings"];
+            const objects = dataView && dataView.metadata && dataView.metadata.objects;
+            const titleSettingsObjects = objects && objects["titleSettings"];
+            const groupSettingsObjects = objects && objects["groupSettings"];
             this.hasCustomTitleText = !!titleSettingsObjects && titleSettingsObjects["text"] !== undefined;
+            this.hasCustomMasterLabel = !!groupSettingsObjects && groupSettingsObjects["masterLabel"] !== undefined;
 
             this.applyColors(dataView);
             this.applySize();
             this.applyFonts();
+            this.applyContainer();
 
-            const category = this.getToggleCategory(dataView);
+            const { enableColumn, toggleColumns } = this.getColumns(dataView);
 
-            if (!category) {
-                this.categoryIdentities = [];
-                this.onIndex = -1;
-                this.offIndex = -1;
+            // The Toggles well is what makes this a toggle group - a Group enable field on its own
+            // has nothing to enable, so it still shows the landing page.
+            if (toggleColumns.length === 0) {
+                this.items = [];
                 this.showLandingPage();
                 this.events.renderingFinished(options);
                 return;
             }
 
-            const normalizedValues = category.values.map((value) => this.normalize(value));
-            const onCount = normalizedValues.filter((value) => ON_VALUES.has(value)).length;
-            const offCount = normalizedValues.filter((value) => OFF_VALUES.has(value)).length;
+            const enableItem = enableColumn ? this.parseColumn(enableColumn, "enable") : undefined;
+            const toggleItems = toggleColumns.map((column) => this.parseColumn(column, "toggle"));
+            const invalidColumn = [enableColumn, ...toggleColumns].find((column, index) =>
+                column && !(index === 0 ? enableItem : toggleItems[index - 1]));
 
-            if (category.values.length !== 2 || onCount !== 1 || offCount !== 1) {
-                this.categoryIdentities = [];
-                this.onIndex = -1;
-                this.offIndex = -1;
-                this.showMessage(this.localizationManager.getDisplayName("Visual_Validation_OnOffRequired"));
+            if (invalidColumn) {
+                this.items = [];
+                // Names the offending field, since with a dozen fields bound "one of them is wrong"
+                // isn't actionable. Function replacer, since a field's display name is arbitrary
+                // report-author text that could contain "$&"-style replacement patterns.
+                this.showMessage(this.localizationManager.getDisplayName("Visual_Validation_OnOffRequired")
+                    .replace(/\{0\}/g, () => invalidColumn.source.displayName));
                 this.events.renderingFinished(options);
                 return;
             }
 
-            this.categoryIdentities = category.values.map((_value, index) =>
-                this.host.createSelectionIdBuilder().withCategory(category, index).createSelectionId()
-            );
-            this.onIndex = normalizedValues.findIndex((value) => ON_VALUES.has(value));
-            this.offIndex = normalizedValues.findIndex((value) => OFF_VALUES.has(value));
+            const groupCard = this.formattingSettings.groupSettingsCard;
+            const items: GroupItem[] = [];
+            let level = 0;
+            if (enableItem) {
+                enableItem.level = level++;
+                items.push(enableItem);
+            }
+            if (groupCard.masterSwitch.value) {
+                const masterLabel = this.hasCustomMasterLabel
+                    ? groupCard.masterLabel.value
+                    : this.localizationManager.getDisplayName("Visual_MasterLabel_Default");
+                items.push({ kind: "master", name: masterLabel, level: level++, isOn: false, isMixed: false });
+            }
+            for (const item of toggleItems) {
+                item.level = level;
+                items.push(item);
+            }
+            this.items = items;
 
-            this.showToggle();
+            // State comes from the persisted filters, so bookmarks, sync slicers and reopening the
+            // report all restore it.
+            this.readStatesFromFilters(options.jsonFilters);
+            this.updateMasterState();
+            this.cleanUpStaleFilters(options.jsonFilters);
 
-            this.filterTarget = this.getFilterTarget(category.source);
-            this.categoryValues = category.values;
-            // State comes from the persisted filter, so bookmarks and reopening the report restore it.
-            this.isOn = this.isOnFromFilters(options.jsonFilters);
+            this.showSection("group");
             this.render();
 
             this.events.renderingFinished(options);
@@ -500,9 +616,80 @@ export class Visual implements IVisual {
         this.tooltipService.hide({ isTouchEvent: false, immediately: true });
     }
 
-    private getToggleCategory(dataView: powerbi.DataView | undefined): DataViewCategoryColumn | undefined {
-        const categories = dataView && dataView.categorical && dataView.categorical.categories;
-        return categories && categories.length > 0 ? categories[0] : undefined;
+    /**
+     * Splits the categorical columns by data role. Fields from separate (unrelated) tables arrive
+     * as one cross-joined set of rows - every combination of every field's values - so each
+     * column is deduped independently later in parseColumn() rather than read row-by-row. Toggles
+     * are sorted by their position in the field well (rolesIndex, when the host provides it -
+     * it's not in the API typings) so the rows render in the order the report author dropped them.
+     */
+    private getColumns(dataView: powerbi.DataView | undefined): { enableColumn?: DataViewCategoryColumn; toggleColumns: DataViewCategoryColumn[] } {
+        const categories = (dataView && dataView.categorical && dataView.categorical.categories) || [];
+        const wellIndex = (column: DataViewCategoryColumn): number => {
+            const rolesIndex = (column.source as any).rolesIndex;
+            const index = rolesIndex && rolesIndex.toggle && rolesIndex.toggle[0];
+            return typeof index === "number" ? index : Number.MAX_SAFE_INTEGER;
+        };
+
+        const enableColumn = categories.find((column) => column.source.roles && column.source.roles["groupEnable"]);
+        const seen = new Set<string>();
+        const toggleColumns = categories
+            .filter((column) => column.source.roles && column.source.roles["toggle"])
+            .filter((column) => {
+                // The same field dropped into the well twice would otherwise render two rows
+                // fighting over one filter.
+                const key = column.source.queryName;
+                if (seen.has(key)) {
+                    return false;
+                }
+                seen.add(key);
+                return true;
+            })
+            .map((column, order) => ({ column, order }))
+            .sort((a, b) => (wellIndex(a.column) - wellIndex(b.column)) || (a.order - b.order))
+            .map(({ column }) => column);
+
+        return { enableColumn, toggleColumns };
+    }
+
+    /**
+     * Validates one bound field - it must have exactly two distinct values, one matching an On
+     * alias and one an Off alias - and returns its GroupItem, or undefined if it doesn't. Keeps
+     * the first row index where each value appears, for building that value's selection identity
+     * (tooltips/context menu).
+     */
+    private parseColumn(column: DataViewCategoryColumn, kind: "enable" | "toggle"): GroupItem | undefined {
+        const firstIndexByValue = new Map<string, number>();
+        column.values.forEach((value, index) => {
+            const normalized = this.normalize(value);
+            if (!firstIndexByValue.has(normalized)) {
+                firstIndexByValue.set(normalized, index);
+            }
+        });
+
+        const distinct = Array.from(firstIndexByValue.keys());
+        const onKey = distinct.find((value) => ON_VALUES.has(value));
+        const offKey = distinct.find((value) => OFF_VALUES.has(value));
+        const target = this.getFilterTarget(column.source);
+        if (distinct.length !== 2 || onKey === undefined || offKey === undefined || !target.table || !target.column) {
+            return undefined;
+        }
+
+        const onRowIndex = firstIndexByValue.get(onKey);
+        const offRowIndex = firstIndexByValue.get(offKey);
+        return {
+            kind,
+            name: column.source.displayName,
+            level: 0,
+            isOn: false,
+            isMixed: false,
+            category: column,
+            target,
+            onValue: column.values[onRowIndex],
+            offValue: column.values[offRowIndex],
+            onRowIndex,
+            offRowIndex
+        };
     }
 
     private normalize(value: powerbi.PrimitiveValue): string {
@@ -532,49 +719,235 @@ export class Visual implements IVisual {
         return this.host.hostCapabilities.allowInteractions !== false;
     }
 
-    private handleToggleClick(): void {
-        if (this.onIndex === -1 || this.offIndex === -1 || !this.filterTarget || !this.interactionsAllowed()) {
-            return;
+    private get enableItem(): GroupItem | undefined {
+        return this.items.find((item) => item.kind === "enable");
+    }
+
+    private get masterItem(): GroupItem | undefined {
+        return this.items.find((item) => item.kind === "master");
+    }
+
+    private get childItems(): GroupItem[] {
+        return this.items.filter((item) => item.kind === "toggle");
+    }
+
+    /** Every row below a Group enable header is disabled (greyed out, inert - but keeps its state) while that header is Off. */
+    private isDisabled(item: GroupItem): boolean {
+        const enableItem = this.enableItem;
+        return !!enableItem && item !== enableItem && !enableItem.isOn;
+    }
+
+    private filterKey(target: FilterTarget): string {
+        return `${target.table}\u0000${target.column}`;
+    }
+
+    /**
+     * general.filter holds one basic filter per bound field (see applyStates()). A field with no
+     * filter yet (first load, or a toggle newly added to the well) renders Off, matching the
+     * starter DAX's SELECTEDVALUE(..., 0) fallback - except Group enable, which renders On so a
+     * freshly built group isn't born disabled; its starter DAX uses a fallback of 1 to match.
+     */
+    private readStatesFromFilters(filters: powerbi.IFilter[] | undefined): void {
+        const states = new Map<string, boolean>();
+        for (const filter of (filters || []) as any[]) {
+            const target = filter && filter.target;
+            if (target && target.table && target.column && Array.isArray(filter.values)) {
+                states.set(this.filterKey(target), filter.values.some((value) => ON_VALUES.has(this.normalize(value))));
+            }
         }
 
-        const nextOn = !this.isOn;
-        const value = this.categoryValues[nextOn ? this.onIndex : this.offIndex];
+        for (const item of this.items) {
+            if (item.target) {
+                const key = this.filterKey(item.target);
+                item.isOn = states.has(key) ? states.get(key) : item.kind === "enable";
+            }
+        }
+    }
 
-        // A real slicer-style filter (persisted in general.filter), not a selection - so it
-        // survives save/reopen, works with bookmarks and sync slicers, and propagates through
-        // model relationships. Off applies 'Off' rather than clearing, since the bridge pattern
-        // maps the Off row to every group.
-        const filter = {
-            $schema: "https://powerbi.com/product/schema#basic",
-            target: this.filterTarget,
-            operator: "In",
-            values: [value],
-            filterType: 1 // Basic
-        };
+    /**
+     * The master row mirrors its children: On when all are On, Mixed when only some are. Under
+     * Only one active, "all On" is impossible with more than one child, so there it's On whenever
+     * any child is - i.e. it reads as "is anything in this group selected".
+     */
+    private updateMasterState(): void {
+        const masterItem = this.masterItem;
+        if (!masterItem) {
+            return;
+        }
+        const children = this.childItems;
+        const onCount = children.filter((item) => item.isOn).length;
+        if (this.formattingSettings.groupSettingsCard.onlyOneActive.value) {
+            masterItem.isOn = onCount > 0;
+            masterItem.isMixed = false;
+        } else {
+            masterItem.isOn = children.length > 0 && onCount === children.length;
+            masterItem.isMixed = onCount > 0 && onCount < children.length;
+        }
+    }
 
-        this.host.applyJsonFilter(filter as any, "general", "filter", powerbi.FilterAction.merge);
-        this.isOn = nextOn;
+    /**
+     * A field removed from the well leaves its filter behind in general.filter, silently filtering
+     * the report with no visible control left to change it. Rewriting the filter set for the
+     * fields that *are* bound drops it. Only attempted once per distinct stale set (see
+     * lastStaleCleanup), and never where interactions are disallowed.
+     */
+    private cleanUpStaleFilters(filters: powerbi.IFilter[] | undefined): void {
+        const boundKeys = new Set(this.items.filter((item) => item.target).map((item) => this.filterKey(item.target)));
+        const staleKeys = ((filters || []) as any[])
+            .map((filter) => filter && filter.target && filter.target.table ? this.filterKey(filter.target) : "")
+            .filter((key) => key && !boundKeys.has(key))
+            .sort()
+            .join("\u0001");
+
+        if (!staleKeys || staleKeys === this.lastStaleCleanup || !this.interactionsAllowed()) {
+            return;
+        }
+        this.lastStaleCleanup = staleKeys;
+        this.applyStates(new Map());
+    }
+
+    /**
+     * Writes one real slicer-style basic filter per bound field (persisted in general.filter, not a
+     * selection) - so state survives save/reopen, works with bookmarks and sync slicers, is readable
+     * by DAX, and propagates through model relationships (the bridge pattern). An Off toggle
+     * applies its Off value rather than no filter at all, since the bridge pattern maps the Off row
+     * to every member. Always writes the *whole* group's set, since general.filter holds exactly
+     * one filter array for this visual.
+     */
+    private applyStates(changes: Map<GroupItem, boolean>): void {
+        const filters = [];
+        for (const item of this.items) {
+            if (!item.target) {
+                continue;
+            }
+            const isOn = changes.has(item) ? changes.get(item) : item.isOn;
+            item.isOn = isOn;
+            filters.push({
+                $schema: "https://powerbi.com/product/schema#basic",
+                target: item.target,
+                operator: "In",
+                values: [isOn ? item.onValue : item.offValue],
+                filterType: 1 // Basic
+            });
+        }
+
+        this.host.applyJsonFilter(filters as any, "general", "filter", powerbi.FilterAction.merge);
+        this.updateMasterState();
         this.render();
     }
 
-    private handleContextMenu(event: MouseEvent): void {
-        event.preventDefault();
-
-        if (this.onIndex === -1 || this.offIndex === -1 || !this.interactionsAllowed()) {
+    /**
+     * Applies the group's rules to a click on row `index`:
+     * - Master: Off (or Mixed) -> every child On; On -> every child Off. Under Only one active,
+     *   "every child On" isn't allowed, so turning the master On selects just the first child.
+     * - Group enable: flips only itself - its children keep their own state while disabled.
+     * - Toggle: flips itself; under Only one active, turning one On turns every other child Off.
+     *   A radio-skinned toggle under Only one active can't be clicked Off again, matching a native
+     *   radio group (use the master switch to clear the group).
+     */
+    private handleClick(index: number): void {
+        const item = this.items[index];
+        if (!item || !this.interactionsAllowed() || this.isDisabled(item)) {
             return;
         }
 
-        const identity = this.categoryIdentities[this.isOn ? this.onIndex : this.offIndex];
+        const onlyOneActive = this.formattingSettings.groupSettingsCard.onlyOneActive.value;
+        const changes = new Map<GroupItem, boolean>();
+        const children = this.childItems;
+
+        if (item.kind === "master") {
+            const turnOn = !item.isOn;
+            children.forEach((child, childIndex) => changes.set(child, turnOn && (!onlyOneActive || childIndex === 0)));
+        } else if (item.kind === "enable") {
+            changes.set(item, !item.isOn);
+        } else {
+            if (item.isOn && onlyOneActive && this.skinFor(item) === "radio") {
+                return;
+            }
+            const turnOn = !item.isOn;
+            changes.set(item, turnOn);
+            if (turnOn && onlyOneActive) {
+                children.filter((child) => child !== item).forEach((child) => changes.set(child, false));
+            }
+        }
+
+        this.applyStates(changes);
+    }
+
+    /**
+     * Space/Enter activate, like a native checkbox/switch. Arrow keys and Home/End move focus
+     * between the group's enabled rows (focus only - activating still takes Space/Enter, so
+     * browsing a radio group with the keyboard never silently rewrites the report's filters).
+     */
+    private handleKeyDown(event: KeyboardEvent, index: number): void {
+        if (event.key === " " || event.key === "Enter") {
+            event.preventDefault();
+            this.handleClick(index);
+            return;
+        }
+
+        const focusable = this.items
+            .map((item, itemIndex) => ({ item, itemIndex }))
+            .filter(({ item }) => !this.isDisabled(item))
+            .map(({ itemIndex }) => itemIndex);
+        const position = focusable.indexOf(index);
+        let nextIndex: number | undefined;
+
+        switch (event.key) {
+            case "ArrowDown":
+            case "ArrowRight":
+                nextIndex = focusable[Math.min(position + 1, focusable.length - 1)];
+                break;
+            case "ArrowUp":
+            case "ArrowLeft":
+                nextIndex = focusable[Math.max(position - 1, 0)];
+                break;
+            case "Home":
+                nextIndex = focusable[0];
+                break;
+            case "End":
+                nextIndex = focusable[focusable.length - 1];
+                break;
+            default:
+                return;
+        }
+
+        event.preventDefault();
+        if (nextIndex !== undefined && this.rows[nextIndex]) {
+            this.rows[nextIndex].switchEl.focus();
+        }
+    }
+
+    /** The selection identity of the row currently representing `item`'s state, for tooltips and the context menu. */
+    private identityFor(item: GroupItem): ISelectionId | undefined {
+        if (!item.category) {
+            return undefined;
+        }
+        const rowIndex = item.isOn ? item.onRowIndex : item.offRowIndex;
+        return this.host.createSelectionIdBuilder().withCategory(item.category, rowIndex).createSelectionId();
+    }
+
+    private handleContextMenu(event: MouseEvent, index: number): void {
+        event.preventDefault();
+
+        const item = this.items[index];
+        if (!item || !this.interactionsAllowed()) {
+            return;
+        }
+
+        // The master row has no field of its own - an empty identity still gives the host's
+        // general visual-level menu, matching the SDK's own context-menu sample.
+        const identity = this.identityFor(item) || ({} as ISelectionId);
         this.selectionManager.showContextMenu(identity, { x: event.clientX, y: event.clientY });
     }
 
     /**
-     * Applies track/knob/label/background colours, substituting the theme's high-contrast palette
-     * when active. Outside high contrast, the On colour itself follows the report theme's first
-     * data colour until a report author picks their own - detected by checking the raw dataView
-     * object rather than the populated settings model, since the latter always has *some* value
-     * (the settings.ts default) and can't tell "never touched" apart from "explicitly set to the
-     * same value as the default".
+     * Applies track/knob/label colours, substituting the theme's high-contrast palette when active.
+     * Outside high contrast, the On colour itself follows the report theme's first data colour
+     * until a report author picks their own - detected by checking the raw dataView object rather
+     * than the populated settings model, since the latter always has *some* value (the settings.ts
+     * default) and can't tell "never touched" apart from "explicitly set to the same value as the
+     * default".
      */
     private applyColors(dataView: powerbi.DataView | undefined): void {
         const card = this.formattingSettings.toggleSettingsCard;
@@ -589,7 +962,6 @@ export class Visual implements IVisual {
             this.target.style.setProperty("--toggle-knob-color-on", palette.foregroundSelected.value);
             this.target.style.setProperty("--toggle-label-color", palette.foreground.value);
             this.target.style.setProperty("--toggle-border-width", `${card.borderWidth.value}px`);
-            this.target.style.backgroundColor = "";
         } else {
             const toggleSettingsObjects = dataView && dataView.metadata && dataView.metadata.objects && dataView.metadata.objects["toggleSettings"];
             const hasCustomOnColor = !!(toggleSettingsObjects && toggleSettingsObjects["onColor"]);
@@ -604,16 +976,16 @@ export class Visual implements IVisual {
             this.target.style.setProperty("--toggle-knob-color", "#ffffff");
             this.target.style.setProperty("--toggle-knob-color-on", "#ffffff");
             this.target.style.setProperty("--toggle-label-color", "#605e5c");
-            this.target.style.backgroundColor = card.showBackground.value ? card.backgroundColor.value.value : "";
         }
     }
 
     /**
-     * Applies the switch's height (width always follows at a fixed 2:1 ratio - see the
+     * Applies every toggle's height (width always follows at a fixed ratio - see the
      * --toggle-track-width calc() in visual.less) via CSS custom properties consumed by
-     * .toggle-slicer__switch. "Fixed" mode is a class switch to a literal height; "Responsive"
-     * mode's actual scaling (clamp() + cqh container query units) all lives in the stylesheet -
-     * this only ever supplies the three bounds, never a computed size itself.
+     * .toggle-slicer__switch. "Fixed" mode is a class switch to a literal height (see
+     * renderSwitch()); "Responsive" mode's actual scaling (clamp() + cqh container query units,
+     * shared out across --toggle-row-count rows) all lives in the stylesheet - this only ever
+     * supplies the three bounds, never a computed size itself.
      */
     private applySize(): void {
         const card = this.formattingSettings.sizeSettingsCard;
@@ -626,150 +998,245 @@ export class Visual implements IVisual {
         const minHeight = Math.min(card.minHeight.value, card.maxHeight.value);
         const maxHeight = Math.max(card.minHeight.value, card.maxHeight.value);
 
-        this.switchEl.classList.toggle("is-size-fixed", card.mode.value.value === "fixed");
         this.target.style.setProperty("--toggle-min-height", `${minHeight}px`);
         this.target.style.setProperty("--toggle-max-height", `${maxHeight}px`);
         this.target.style.setProperty("--toggle-fixed-height", `${card.fixedHeight.value}px`);
     }
 
     /**
-     * Applies the title's and on/off labels' font family/size/weight/style/decoration/colour as CSS
-     * custom properties, each independently customizable from their own FontControl in the Format
-     * pane. There's no host API for reading the report theme's actual typography (unlike colour's
-     * host.colorPalette.getColor()), so these are static defaults approximating this visual's own
-     * previous hardcoded look, not a live theme readout. Colour specifically is still forced to the
-     * high-contrast palette's foreground when active, same as applyColors() already does for
-     * --toggle-label-color - a custom Format-pane colour isn't guaranteed legible against a
-     * high-contrast theme's background, regardless of which text it's painting.
+     * Applies the title's, toggle names' and on/off labels' font family/size/weight/style/decoration/
+     * colour as CSS custom properties, each independently customizable from their own FontControl in
+     * the Format pane. There's no host API for reading the report theme's actual typography (unlike
+     * colour's host.colorPalette.getColor()), so these are static defaults, not a live theme readout.
+     * Colour specifically is still forced to the high-contrast palette's foreground when active,
+     * same as applyColors() already does for --toggle-label-color - a custom Format-pane colour
+     * isn't guaranteed legible against a high-contrast theme's background.
      */
     private applyFonts(): void {
         const palette = this.host.colorPalette;
         const titleCard = this.formattingSettings.titleSettingsCard;
         const toggleCard = this.formattingSettings.toggleSettingsCard;
+        const nameCard = this.formattingSettings.nameSettingsCard;
 
-        this.target.style.setProperty("--toggle-title-font-family", titleCard.font.fontFamily.value);
-        this.target.style.setProperty("--toggle-title-font-size", `${titleCard.font.fontSize.value}px`);
-        this.target.style.setProperty("--toggle-title-font-weight", titleCard.font.bold.value ? "bold" : "normal");
-        this.target.style.setProperty("--toggle-title-font-style", titleCard.font.italic.value ? "italic" : "normal");
-        this.target.style.setProperty("--toggle-title-text-decoration", titleCard.font.underline.value ? "underline" : "none");
+        const fonts: Array<[string, typeof titleCard.font, string]> = [
+            ["title", titleCard.font, titleCard.fontColor.value.value],
+            ["label", toggleCard.labelFont, toggleCard.labelFontColor.value.value],
+            ["name", nameCard.font, nameCard.fontColor.value.value]
+        ];
 
-        this.target.style.setProperty("--toggle-label-font-family", toggleCard.labelFont.fontFamily.value);
-        this.target.style.setProperty("--toggle-label-font-size", `${toggleCard.labelFont.fontSize.value}px`);
-        this.target.style.setProperty("--toggle-label-font-weight", toggleCard.labelFont.bold.value ? "bold" : "normal");
-        this.target.style.setProperty("--toggle-label-font-style", toggleCard.labelFont.italic.value ? "italic" : "normal");
-        this.target.style.setProperty("--toggle-label-text-decoration", toggleCard.labelFont.underline.value ? "underline" : "none");
-
-        if (palette.isHighContrast) {
-            this.target.style.setProperty("--toggle-title-font-color", palette.foreground.value);
-            this.target.style.setProperty("--toggle-label-font-color", palette.foreground.value);
-        } else {
-            this.target.style.setProperty("--toggle-title-font-color", titleCard.fontColor.value.value);
-            this.target.style.setProperty("--toggle-label-font-color", toggleCard.labelFontColor.value.value);
+        for (const [prefix, font, color] of fonts) {
+            this.target.style.setProperty(`--toggle-${prefix}-font-family`, font.fontFamily.value);
+            this.target.style.setProperty(`--toggle-${prefix}-font-size`, `${font.fontSize.value}px`);
+            this.target.style.setProperty(`--toggle-${prefix}-font-weight`, font.bold.value ? "bold" : "normal");
+            this.target.style.setProperty(`--toggle-${prefix}-font-style`, font.italic.value ? "italic" : "normal");
+            this.target.style.setProperty(`--toggle-${prefix}-text-decoration`, font.underline.value ? "underline" : "none");
+            this.target.style.setProperty(`--toggle-${prefix}-font-color`, palette.isHighContrast ? palette.foreground.value : color);
         }
     }
 
+    /**
+     * The group's container box: one of a fixed set of border treatments (classes on frameEl -
+     * see .toggle-group-frame in visual.less) over the report author's own colour/width/radius,
+     * plus padding, vertical alignment and an optional fill. High contrast swaps the border to the
+     * theme foreground and drops the fill, for the same legibility reason applyColors() does.
+     */
+    private applyContainer(): void {
+        const card = this.formattingSettings.containerSettingsCard;
+        const palette = this.host.colorPalette;
+        const borderStyle = String(card.borderStyle.value.value);
+
+        this.frameEl.classList.remove("is-border-none", "is-border-flat", "is-border-embossed", "is-border-gutter");
+        this.frameEl.classList.add(`is-border-${borderStyle}`);
+        this.frameEl.classList.remove("is-valign-top", "is-valign-middle", "is-valign-bottom");
+        this.frameEl.classList.add(`is-valign-${card.verticalAlignment.value.value}`);
+
+        this.frameEl.style.setProperty("--toggle-frame-border-color", palette.isHighContrast ? palette.foreground.value : card.borderColor.value.value);
+        this.frameEl.style.setProperty("--toggle-frame-border-width", `${card.borderWidth.value}px`);
+        this.frameEl.style.setProperty("--toggle-frame-radius", `${card.cornerRadius.value}px`);
+        this.frameEl.style.setProperty("--toggle-frame-padding", `${card.padding.value}px`);
+        this.frameEl.style.backgroundColor = card.showBackground.value && !palette.isHighContrast ? card.backgroundColor.value.value : "";
+    }
+
+    /**
+     * The skin a row is drawn with. Header rows (master, Group enable) are never radios - they're
+     * not one of the mutually exclusive options - so under the radio skin they're drawn as
+     * checkboxes instead, the conventional "select all"/"enable" control above a radio list.
+     */
+    private skinFor(item: GroupItem): "toggle" | "checkbox" | "radio" {
+        const skin = String(this.formattingSettings.toggleSettingsCard.controlStyle.value.value);
+        if (skin === "radio") {
+            return item.kind === "toggle" ? "radio" : "checkbox";
+        }
+        return skin === "checkbox" ? "checkbox" : "toggle";
+    }
+
     private render(): void {
-        this.switchEl.classList.toggle("is-on", this.isOn);
-        this.switchEl.classList.toggle("is-off", !this.isOn);
-        this.switchEl.setAttribute("aria-checked", String(this.isOn));
+        this.ensureRowPool();
 
-        // Reflects hostCapabilities.allowInteractions (e.g. Focus mode thumbnails, some export/embed
-        // contexts) visually and removes the switch from the tab order, matching handleToggleClick's
-        // own guard rather than leaving a focusable control that silently does nothing when clicked.
-        const interactionsAllowed = this.interactionsAllowed();
-        this.switchEl.classList.toggle("is-readonly", !interactionsAllowed);
-        this.switchEl.setAttribute("tabindex", interactionsAllowed ? "0" : "-1");
-
-        const card = this.formattingSettings.toggleSettingsCard;
-        this.switchEl.classList.toggle("is-depth", card.depthEffect.value);
-
-        // Graphical skin only - selection/filter behaviour (handleToggleClick, isOnFromFilters,
-        // etc.) doesn't change between shapes, so this only swaps the shown shape/role. role
-        // follows the shape rather than staying "switch" for both, since a screen reader user
-        // otherwise hears "switch" for a control drawn as a checkbox.
-        const isCheckbox = card.controlStyle.value.value === "checkbox";
-        this.switchEl.classList.toggle("is-checkbox", isCheckbox);
-        this.switchEl.setAttribute("role", isCheckbox ? "checkbox" : "switch");
-
+        const groupCard = this.formattingSettings.groupSettingsCard;
+        const nameCard = this.formattingSettings.nameSettingsCard;
         const titleCard = this.formattingSettings.titleSettingsCard;
-        // Shows a real, localized default ("Toggle label") until a report author sets their own
-        // text - settings.ts's own static default is deliberately blank so this doesn't fall back to
-        // fixed English UI copy outside ILocalizationManager. Once hasCustomTitleText is true (the
-        // property has ANY persisted value, including a deliberately-cleared blank one), the
-        // report-authored value always wins, so clearing the field still shows no title.
+        const toggleCard = this.formattingSettings.toggleSettingsCard;
+
+        // Shows a real, localized default until a report author sets their own text - settings.ts's
+        // own static default is deliberately blank so this doesn't fall back to fixed English UI
+        // copy outside ILocalizationManager. Once hasCustomTitleText is true (the property has ANY
+        // persisted value, including a deliberately-cleared blank one), the report-authored value
+        // always wins, so clearing the field still shows no title.
         const titleText = this.hasCustomTitleText
             ? titleCard.text.value
             : this.localizationManager.getDisplayName("Visual_TitleText_Default");
         this.titleEl.textContent = titleText;
         this.titleEl.style.display = titleText ? "" : "none";
 
-        // "Inline left" (default) needs no order override - titleEl already comes before container
-        // in DOM order. "Inline right" flips that via CSS order; "Above" stacks them in a column
-        // (title always first/top, regardless of left/right - there's no horizontal axis to flip).
-        // normalizeLegacyInlinePosition handles a report saved before "inline" was split into
-        // "inline-left"/"inline-right" - see its own comment below.
+        // "Inline left" needs no order override - titleEl already comes before groupEl in DOM
+        // order. "Inline right" flips that via CSS order; "Above" (the default) stacks them in a
+        // column with the title always first/top.
         const titlePosition = this.normalizeLegacyInlinePosition(titleCard.position.value.value);
         this.titleWrapEl.classList.toggle("toggle-slicer-wrap--stacked", titlePosition === "above");
         this.titleWrapEl.classList.toggle("toggle-slicer-wrap--inline-right", titlePosition === "inline-right");
         this.titleWrapEl.style.setProperty("--toggle-title-gap", `${titleCard.spacing.value}px`);
 
-        // Where the whole title+switch assembly sits in the tile - applied to titleWrapEl itself
-        // (via CSS auto-margins, see visual.less), not to the shared "target" root, since target is
-        // also the parent of the unrelated landing-page/validation-message sections and a class left
-        // there from a previous render() would otherwise still be applied to whichever of those is
-        // showing on a later update() that doesn't reach render() at all (unbound field, validation
-        // failure) - see the CLAUDE.md note on titleSettings.alignment for the auto-margin mechanics.
+        // Where the whole title+group assembly sits in the container - applied to titleWrapEl
+        // itself via CSS auto margins (see visual.less), not the shared "target" root, since target
+        // is also the parent of the unrelated landing-page/validation-message sections.
         this.titleWrapEl.classList.remove("is-title-align-left", "is-title-align-right", "is-title-align-justify");
         this.titleWrapEl.classList.add(`is-title-align-${titleCard.alignment.value.value}`);
 
-        // With multiple custom-titled toggles on a page, aria-label alone (which only ever names
-        // the On/Off states) doesn't let keyboard/screen-reader users tell them apart - describedby
-        // adds the title's own text to the switch's accessible description. Only when there's a
-        // title to point to, since an id reference to a hidden/empty element is worse than none.
+        // Names' Justify spreads names and toggles to the group's opposite edges, which only has
+        // room to happen once the group (and so titleWrapEl around it) fills the container's width.
+        const namesShown = nameCard.show.value;
+        const nameAlignment = String(nameCard.alignment.value.value);
+        this.titleWrapEl.classList.toggle("is-group-stretched", nameAlignment === "justify");
+
+        // Grid layout knobs - see .toggle-group in visual.less for how the name/switch columns,
+        // indent and --toggle-max-level (names-right's hanging indent) fit together.
+        const namesRight = namesShown && nameCard.position.value.value === "right";
+        this.groupEl.classList.toggle("is-names-hidden", !namesShown);
+        this.groupEl.classList.toggle("is-names-right", namesRight);
+        this.groupEl.classList.toggle("is-readonly", !this.interactionsAllowed());
+        this.groupEl.classList.remove("is-align-left", "is-align-right", "is-align-justify");
+        this.groupEl.classList.add(`is-align-${nameAlignment}`);
+        this.groupEl.style.setProperty("--toggle-row-gap", `${groupCard.rowSpacing.value}px`);
+        this.groupEl.style.setProperty("--toggle-name-gap", `${nameCard.spacing.value}px`);
+        this.groupEl.style.setProperty("--toggle-indent", `${groupCard.indent.value}px`);
+        this.groupEl.style.setProperty("--toggle-max-level", String(Math.max(0, ...this.items.map((item) => item.level))));
+        // Responsive sizing shares the tile's height out across every row, rather than sizing
+        // each toggle as if it had the whole tile to itself.
+        this.target.style.setProperty("--toggle-row-count", String(Math.max(1, this.items.length)));
+
+        // An exclusive radio list is announced as one radiogroup; anything else is a plain group.
+        // Either way it's named by the title (when there is one), which is what tells several
+        // toggle groups on one page apart for a screen reader user.
+        const isRadioGroup = groupCard.onlyOneActive.value && toggleCard.controlStyle.value.value === "radio";
+        this.groupEl.setAttribute("role", isRadioGroup ? "radiogroup" : "group");
         if (titleText) {
-            this.switchEl.setAttribute("aria-describedby", this.titleEl.id);
+            this.groupEl.setAttribute("aria-labelledby", this.titleEl.id);
         } else {
-            this.switchEl.removeAttribute("aria-describedby");
+            this.groupEl.removeAttribute("aria-labelledby");
         }
 
-        this.onLabelEl.textContent = card.onLabel.value;
-        this.offLabelEl.textContent = card.offLabel.value;
-        this.container.style.setProperty("--toggle-label-gap", `${card.labelSpacing.value}px`);
+        // Roving tabindex for a radiogroup (one Tab stop - the checked radio, or the first enabled
+        // row if none is checked - with arrow keys moving within it, per the ARIA radio group
+        // pattern); every enabled row is its own Tab stop otherwise.
+        const enabledIndexes = this.items.map((item, index) => this.isDisabled(item) ? -1 : index).filter((index) => index !== -1);
+        const checkedRadioIndex = this.items.findIndex((item) => item.kind === "toggle" && item.isOn && !this.isDisabled(item));
+        const radioTabStop = checkedRadioIndex !== -1 ? checkedRadioIndex : enabledIndexes[0];
 
-        const showLabels = card.showLabels.value;
-        // All three positions ("above", "inline-left", "inline-right") now show only the label
-        // matching the current state - "inline-left"/"inline-right" only differ in which side of the
-        // switch that single label sits on, via CSS order (see visual.less), not in what's shown.
+        this.items.forEach((item, index) => {
+            const row = this.rows[index];
+            const isDisabled = this.isDisabled(item);
+
+            // Name before or after the switch cell. DOM order (not CSS order) decides this, since
+            // rows are display: contents inside one shared grid, where CSS order would reorder
+            // every row's cells against each other rather than within the row.
+            const firstEl = namesRight ? row.cellEl : row.nameEl;
+            if (row.rowEl.firstElementChild !== firstEl) {
+                row.rowEl.insertBefore(firstEl, row.rowEl.firstElementChild);
+            }
+
+            row.rowEl.style.setProperty("--toggle-level", String(item.level));
+            row.nameEl.textContent = item.name;
+            row.nameEl.style.display = namesShown ? "" : "none";
+            row.nameEl.classList.toggle("is-disabled", isDisabled);
+            row.cellEl.classList.toggle("is-disabled", isDisabled);
+
+            const tabbable = !isDisabled && this.interactionsAllowed() && (!isRadioGroup || index === radioTabStop);
+            this.renderSwitch(item, row, isDisabled, tabbable);
+        });
+    }
+
+    /** Draws one row's switch cell - the pre-group single toggle's render(), applied per row. */
+    private renderSwitch(item: GroupItem, row: RowElements, isDisabled: boolean, tabbable: boolean): void {
+        const card = this.formattingSettings.toggleSettingsCard;
+        const groupCard = this.formattingSettings.groupSettingsCard;
+        const { switchEl, cellEl, onLabelEl, offLabelEl } = row;
+        const isMixed = item.isMixed;
+        const isOn = item.isOn && !isMixed;
+
+        switchEl.classList.toggle("is-on", isOn);
+        switchEl.classList.toggle("is-off", !isOn && !isMixed);
+        switchEl.classList.toggle("is-mixed", isMixed);
+        switchEl.classList.toggle("is-depth", card.depthEffect.value);
+        switchEl.classList.toggle("is-size-fixed", this.formattingSettings.sizeSettingsCard.mode.value.value === "fixed");
+
+        // Reflects hostCapabilities.allowInteractions (e.g. Focus mode thumbnails, some export/embed
+        // contexts) visually and removes the switch from the tab order, matching handleClick's own
+        // guard rather than leaving a focusable control that silently does nothing when clicked.
+        switchEl.classList.toggle("is-readonly", !this.interactionsAllowed());
+        switchEl.classList.toggle("is-disabled", isDisabled);
+        switchEl.setAttribute("tabindex", tabbable ? "0" : "-1");
+        if (isDisabled) {
+            switchEl.setAttribute("aria-disabled", "true");
+        } else {
+            switchEl.removeAttribute("aria-disabled");
+        }
+
+        // Graphical skin only - filter behaviour doesn't change between shapes, so this only swaps
+        // the shown shape and its role. A radio-skinned row is only announced as a radio inside an
+        // exclusive (Only one active) group; in an independent group it behaves like a checkbox, so
+        // it's announced as one rather than promising radio semantics it doesn't have.
+        const skin = this.skinFor(item);
+        switchEl.classList.toggle("is-checkbox", skin === "checkbox");
+        switchEl.classList.toggle("is-radio", skin === "radio");
+        const role = skin === "toggle" ? "switch" : skin === "radio" && groupCard.onlyOneActive.value ? "radio" : "checkbox";
+        switchEl.setAttribute("role", role);
+        // role="switch" has no "mixed" state in ARIA - its aria-label still says "Mixed" below.
+        switchEl.setAttribute("aria-checked", isMixed ? (role === "switch" ? "false" : "mixed") : String(isOn));
+
+        onLabelEl.textContent = card.onLabel.value;
+        offLabelEl.textContent = card.offLabel.value;
+        cellEl.style.setProperty("--toggle-label-gap", `${card.labelSpacing.value}px`);
+
+        // All three positions ("above", "inline-left", "inline-right") show only the label matching
+        // the current state - "inline-left"/"inline-right" only differ in which side of the switch
+        // that single label sits on, via CSS order (see visual.less), not in what's shown.
         const labelPosition = this.normalizeLegacyInlinePosition(card.labelPosition.value.value);
-        this.container.classList.toggle("toggle-slicer--stacked", labelPosition === "above");
-        this.container.classList.toggle("toggle-slicer--inline-left", labelPosition === "inline-left");
-        this.container.classList.toggle("toggle-slicer--inline-right", labelPosition === "inline-right");
+        cellEl.classList.toggle("toggle-slicer--stacked", labelPosition === "above");
+        cellEl.classList.toggle("toggle-slicer--inline-left", labelPosition === "inline-left");
+        cellEl.classList.toggle("toggle-slicer--inline-right", labelPosition === "inline-right");
 
         // showLabels false always wins over the stylesheet's container-query auto-hide, regardless
-        // of size. showLabels true still only shows whichever of on/off matches the current state.
-        this.onLabelEl.style.display = showLabels && this.isOn ? "" : "none";
-        this.offLabelEl.style.display = showLabels && !this.isOn ? "" : "none";
+        // of size. A Mixed master shows neither, since it's neither On nor Off.
+        const showLabels = card.showLabels.value;
+        onLabelEl.style.display = showLabels && isOn ? "" : "none";
+        offLabelEl.style.display = showLabels && !isOn && !isMixed ? "" : "none";
 
-        // Where the switch+label row sits within its own box - see the CLAUDE.md note on
-        // toggleSettings.alignment for when "justify" has a visible effect.
-        this.container.classList.remove("is-align-left", "is-align-right", "is-align-justify");
-        this.container.classList.add(`is-align-${card.alignment.value.value}`);
-
-        // The aria-label always names both states regardless of showLabels, since a hidden label
-        // makes the accessible name more important, not less. Label text is arbitrary user input
-        // from the Format pane, so a function replacer is used instead of a replacement-string
-        // literal - String.prototype.replace would otherwise interpret sequences like "$&" or "$1"
-        // inside that text as special patterns rather than inserting it verbatim.
-        const currentLabel = this.isOn ? card.onLabel.value : card.offLabel.value;
-        // Matches the role set above - "... toggle, currently ..." would otherwise contradict
-        // role="checkbox" for a screen reader user even though the switch/checkbox distinction is
-        // purely graphical everywhere else.
-        const ariaLabelKey = isCheckbox ? "Visual_Checkbox_AriaLabel" : "Visual_Switch_AriaLabel";
+        // The aria-label always names the row and both states regardless of showLabels/names, since
+        // hidden visible text makes the accessible name more important, not less. Names and label
+        // text are arbitrary report-author input, so a function replacer is used instead of a
+        // replacement-string literal - String.prototype.replace would otherwise interpret
+        // sequences like "$&" or "$1" inside that text as special patterns.
+        const currentLabel = isMixed
+            ? this.localizationManager.getDisplayName("Visual_State_Mixed")
+            : isOn ? card.onLabel.value : card.offLabel.value;
+        const ariaLabelKey = role === "switch" ? "Visual_Switch_AriaLabel" : role === "radio" ? "Visual_Radio_AriaLabel" : "Visual_Checkbox_AriaLabel";
         const ariaLabel = this.localizationManager.getDisplayName(ariaLabelKey)
-            .replace(/\{0\}/g, () => card.offLabel.value)
-            .replace(/\{1\}/g, () => card.onLabel.value)
-            .replace(/\{2\}/g, () => currentLabel);
-        this.switchEl.setAttribute("aria-label", ariaLabel);
+            .replace(/\{0\}/g, () => item.name)
+            .replace(/\{1\}/g, () => card.offLabel.value)
+            .replace(/\{2\}/g, () => card.onLabel.value)
+            .replace(/\{3\}/g, () => currentLabel);
+        switchEl.setAttribute("aria-label", ariaLabel);
     }
 
     /**
@@ -777,7 +1244,7 @@ export class Visual implements IVisual {
      * queryName, which is only a display/query alias and goes stale when a table or column is
      * renamed. Falls back to splitting queryName on its first dot only.
      */
-    private getFilterTarget(source: powerbi.DataViewMetadataColumn): { table: string; column: string } {
+    private getFilterTarget(source: powerbi.DataViewMetadataColumn): FilterTarget {
         const expr: any = (source as any).expr;
         if (expr?.source?.entity && expr?.ref) {
             return { table: expr.source.entity, column: expr.ref };
@@ -787,22 +1254,11 @@ export class Visual implements IVisual {
         return { table: q.substring(0, i), column: q.substring(i + 1) };
     }
 
-    /** No persisted filter (first load) renders as Off, matching SELECTEDVALUE(ToggleTable[Value], 0)'s fallback. */
-    private isOnFromFilters(filters: powerbi.IFilter[] | undefined): boolean {
-        const f: any = filters && filters[0];
-        const values: any[] = f && Array.isArray(f.values) ? f.values : [];
-        return values.some((v) => ON_VALUES.has(this.normalize(v)));
-    }
-
-    /** Shows exactly one of the switch / validation message / landing page, hiding the other two. */
-    private showSection(section: "toggle" | "message" | "landing"): void {
-        this.titleWrapEl.style.display = section === "toggle" ? "flex" : "none";
+    /** Shows exactly one of the group / validation message / landing page, hiding the other two. */
+    private showSection(section: "group" | "message" | "landing"): void {
+        this.frameEl.style.display = section === "group" ? "flex" : "none";
         this.messageEl.style.display = section === "message" ? "flex" : "none";
         this.landingPageEl.style.display = section === "landing" ? "flex" : "none";
-    }
-
-    private showToggle(): void {
-        this.showSection("toggle");
     }
 
     /** "A field is bound but its values aren't a valid On/Off pair" - distinct from the landing page. */
@@ -811,27 +1267,30 @@ export class Visual implements IVisual {
         this.messageEl.textContent = body;
     }
 
-    /** "No field bound yet" - an icon/heading plus a skeleton preview of the switch. */
+    /** "No field bound yet" - an icon/heading plus a skeleton preview of a toggle group. */
     private showLandingPage(): void {
         this.showSection("landing");
         this.landingHeadingEl.textContent = this.localizationManager.getDisplayName("Visual_LandingPage_Heading");
         this.landingHintEl.textContent = this.localizationManager.getDisplayName("Visual_LandingPage_Hint");
     }
 
-    private showTooltip(event: PointerEvent): void {
-        if (!this.tooltipService.enabled() || this.onIndex === -1 || this.offIndex === -1) {
+    private showTooltip(event: PointerEvent, index: number): void {
+        const item = this.items[index];
+        if (!this.tooltipService.enabled() || !item) {
             return;
         }
 
         const card = this.formattingSettings.toggleSettingsCard;
-        const currentLabel = this.isOn ? card.onLabel.value : card.offLabel.value;
-        const identity = this.categoryIdentities[this.isOn ? this.onIndex : this.offIndex];
+        const currentLabel = item.isMixed
+            ? this.localizationManager.getDisplayName("Visual_State_Mixed")
+            : item.isOn ? card.onLabel.value : card.offLabel.value;
+        const identity = this.identityFor(item);
 
         this.tooltipService.show({
             coordinates: [event.clientX, event.clientY],
             isTouchEvent: event.pointerType === "touch",
             dataItems: [{
-                displayName: this.localizationManager.getDisplayName("Visual_Tooltip_Label"),
+                displayName: item.name,
                 value: currentLabel
             }],
             identities: identity ? [identity] : []

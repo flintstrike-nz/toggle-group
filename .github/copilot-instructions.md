@@ -1,13 +1,16 @@
 # Copilot instructions for toggle-slicer-visual
 
-This is a Power BI custom visual (powerbi-visuals-api SDK): a toggle switch that drives a
-disconnected-table slicer selection via SelectionManager. Read [CLAUDE.md](../CLAUDE.md) before
+This is a Power BI custom visual (powerbi-visuals-api SDK): a group of on/off toggles, one per
+bound field, each driving its own disconnected-table filter via `host.applyJsonFilter()` (one
+basic filter per field, all persisted together in `general.filter`). Read [CLAUDE.md](../CLAUDE.md) before
 reviewing - it documents several intentional decisions that are not bugs:
 
 - `tsconfig.json` intentionally omits `strict` — enabling it breaks the SDK's generated
   `visualPlugin.ts` wrapper, which passes an optional `options?` into a required-options
   constructor.
-- The `toggle` role's `dataReductionAlgorithm` is capped at 100, not 2, on purpose.
+- The `toggle` role's `dataReductionAlgorithm` is capped at 10000, not 2 per field, on purpose -
+  fields from unrelated tables arrive cross-joined (2^N rows), and a mis-bound field must still
+  surface its extra values to fail validation.
 - `toggleSettings.onLabel`/`offLabel` values (and placeholders) are deliberately NOT
   localized — they're per-report Format-pane text, not fixed visual chrome.
 - `capabilities.json`'s own `displayName`/`description` strings are a non-localizable
@@ -17,8 +20,9 @@ reviewing - it documents several intentional decisions that are not bugs:
   doesn't need to reference `--toggle-on-color`/`--toggle-off-color`.
 
 When reviewing, prioritize:
-- Async correctness around `SelectionManager.select()`/`clear()` — race conditions on rapid
-  interaction, unhandled rejections, optimistic state flips that outrun the awaited call.
+- Group-rule correctness in `handleClick()` — every click must write the *whole* group's filter
+  array (general.filter holds one array for the visual), Only one active must leave at most one
+  child On, and rows disabled by Group enable must stay inert without losing their state.
 - Every user-facing string routed through `ILocalizationManager` or
   `FormattingSettingsService`'s `displayNameKey`/`descriptionKey` — flag literal English
   strings introduced in `visual.ts`/`settings.ts`.

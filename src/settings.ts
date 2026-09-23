@@ -41,15 +41,16 @@ import ValidatorType = powerbi.visuals.ValidatorType;
 class ToggleSettingsCardSettings extends FormattingSettingsCard {
     // Graphical skin only - every other toggleSettings property (colours, border, depth effect,
     // labels) keeps meaning the same thing regardless of which shape is drawn, so this doesn't gate
-    // anything else's visibility the way showBorder/showBackground do below.
+    // anything else's visibility the way showBorder does below. Radio pairs naturally with
+    // groupSettings.onlyOneActive, but isn't tied to it - see render()'s role handling in visual.ts.
     controlStyle = new formattingSettings.ItemDropdown({
         name: "controlStyle",
         displayNameKey: "Visual_ControlStyle_DisplayName",
         descriptionKey: "Visual_ControlStyle_Description",
         items: [
             { value: "toggle", displayName: "Toggle" },
-            { value: "checkbox", displayName: "Checkbox" }
-            // TODO: Add { value: "radio", displayName: "Radio" }
+            { value: "checkbox", displayName: "Checkbox" },
+            { value: "radio", displayName: "Radio" }
         ],
         value: { value: "toggle", displayName: "Toggle" }
     });
@@ -102,9 +103,8 @@ class ToggleSettingsCardSettings extends FormattingSettingsCard {
     // "Inline left"/"Inline right" both show only the label matching the current On/Off state (the
     // same single-label behaviour "Above" already used, just horizontal instead of vertical) - the
     // value only decides which side of the switch it sits on. This replaces the old two-item
-    // "inline"/"above" list's "inline" meaning (both On/Off labels always flanking the switch) - the
-    // former above-left/above-right idea is superseded by the separate alignment control below,
-    // which covers left/right/justify positioning without needing dedicated dropdown items for it.
+    // "inline"/"above" list's "inline" meaning (both On/Off labels always flanking the switch).
+    // Where each whole row sits within the group is nameSettings.alignment's job, not this one's.
     labelPosition = new formattingSettings.ItemDropdown({
         name: "labelPosition",
         displayNameKey: "Visual_LabelPosition_DisplayName",
@@ -117,23 +117,6 @@ class ToggleSettingsCardSettings extends FormattingSettingsCard {
         value: { value: "inline-left", displayName: "Label left" }
     });
 
-    // Independent of labelPosition - controls how the switch+label row itself sits within the tile
-    // (or, when titleSettings.alignment also stretches the shared row to fill the tile, within the
-    // remaining space next to the title). "Justify" spaces the row's own children (the switch and
-    // whichever label is visible) to opposite ends of that row rather than leaving them shrink-wrapped
-    // together, giving a "label at one edge, switch at the other" layout.
-    alignment = new formattingSettings.ItemDropdown({
-        name: "alignment",
-        displayNameKey: "Visual_ToggleAlignment_DisplayName",
-        descriptionKey: "Visual_ToggleAlignment_Description",
-        items: [
-            { value: "left", displayName: "Left" },
-            { value: "right", displayName: "Right" },
-            { value: "justify", displayName: "Justify" }
-        ],
-        value: { value: "left", displayName: "Left" }
-    });
-
     labelSpacing = new formattingSettings.NumUpDown({
         name: "labelSpacing",
         displayNameKey: "Visual_LabelSpacing_DisplayName",
@@ -144,20 +127,6 @@ class ToggleSettingsCardSettings extends FormattingSettingsCard {
             minValue: { type: ValidatorType.Min, value: 0 },
             maxValue: { type: ValidatorType.Max, value: 64 }
         }
-    });
-
-    showBackground = new formattingSettings.ToggleSwitch({
-        name: "showBackground",
-        displayNameKey: "Visual_ShowBackground_DisplayName",
-        descriptionKey: "Visual_ShowBackground_Description",
-        value: false
-    });
-
-    backgroundColor = new formattingSettings.ColorPicker({
-        name: "backgroundColor",
-        displayNameKey: "Visual_BackgroundColor_DisplayName",
-        descriptionKey: "Visual_BackgroundColor_Description",
-        value: { value: "#FFFFFF" }
     });
 
     showBorder = new formattingSettings.ToggleSwitch({
@@ -234,27 +203,283 @@ class ToggleSettingsCardSettings extends FormattingSettingsCard {
     slices: Array<FormattingSettingsSlice> = [
         this.controlStyle,
         this.onColor, this.offColor, this.onLabel, this.offLabel,
-        this.showLabels, this.labelPosition, this.alignment, this.labelSpacing, this.labelFont, this.labelFontColor,
-        this.showBackground, this.backgroundColor,
+        this.showLabels, this.labelPosition, this.labelSpacing, this.labelFont, this.labelFontColor,
         this.showBorder, this.borderColor, this.borderWidth, this.depthEffect
     ];
 
-    // backgroundColor/borderColor/borderWidth only make sense once their own toggle is on - hiding
-    // them otherwise instead of leaving a swatch or number field that silently does nothing.
-    //
-    // alignment's Left/Right only have a visible effect when labelPosition is "above" - outside that,
-    // this row shares titleWrapEl's own row with the title (labelPosition inline-left/inline-right),
-    // where an auto margin on it would consume free space *before* titleSettings.alignment: justify's
-    // own space-between gets a chance to use it (see visual.less's is-align-left/right comment), so
-    // Left/Right are scoped out there entirely rather than left in as a control that visibly does
-    // nothing. Hiding the whole property (not just those two choices) when it wouldn't do anything is
-    // simpler than a dropdown that silently drops an item depending on another property's value, and
-    // Justify alone isn't worth keeping visible on its own.
+    // borderColor/borderWidth only make sense once showBorder is on - hiding them otherwise
+    // instead of leaving a swatch or number field that silently does nothing.
     onPreProcess(): void {
-        this.backgroundColor.visible = this.showBackground.value;
         this.borderColor.visible = this.showBorder.value;
         this.borderWidth.visible = this.showBorder.value;
-        this.alignment.visible = this.labelPosition.value.value === "above";
+    }
+}
+
+/**
+ * Group Rules Card - how the toggles in the group behave together. None of these need their own
+ * data field: they only decide which filters handleClick() in visual.ts writes for the bound
+ * toggles. The one rule that *does* need a field - Group enable - comes from binding the separate
+ * "Group enable" data role instead, so DAX can read it (see visual.ts's enableItem).
+ */
+class GroupSettingsCardSettings extends FormattingSettingsCard {
+    onlyOneActive = new formattingSettings.ToggleSwitch({
+        name: "onlyOneActive",
+        displayNameKey: "Visual_OnlyOneActive_DisplayName",
+        descriptionKey: "Visual_OnlyOneActive_Description",
+        value: false
+    });
+
+    // A visual-only header row - it has no field or filter of its own, since its state is always
+    // derivable from its children's (all On, all Off, or mixed).
+    masterSwitch = new formattingSettings.ToggleSwitch({
+        name: "masterSwitch",
+        displayNameKey: "Visual_MasterSwitch_DisplayName",
+        descriptionKey: "Visual_MasterSwitch_Description",
+        value: false
+    });
+
+    // Blank for the same reason as titleSettings.text - render() shows the localized
+    // Visual_MasterLabel_Default until the raw dataView object has a persisted value.
+    masterLabel = new formattingSettings.TextInput({
+        name: "masterLabel",
+        displayNameKey: "Visual_MasterLabel_DisplayName",
+        descriptionKey: "Visual_MasterLabel_Description",
+        placeholder: "All",
+        value: ""
+    });
+
+    indent = new formattingSettings.NumUpDown({
+        name: "indent",
+        displayNameKey: "Visual_Indent_DisplayName",
+        descriptionKey: "Visual_Indent_Description",
+        value: 16,
+        options: {
+            unitSymbol: "px",
+            minValue: { type: ValidatorType.Min, value: 0 },
+            maxValue: { type: ValidatorType.Max, value: 64 }
+        }
+    });
+
+    rowSpacing = new formattingSettings.NumUpDown({
+        name: "rowSpacing",
+        displayNameKey: "Visual_RowSpacing_DisplayName",
+        descriptionKey: "Visual_RowSpacing_Description",
+        value: 8,
+        options: {
+            unitSymbol: "px",
+            minValue: { type: ValidatorType.Min, value: 0 },
+            maxValue: { type: ValidatorType.Max, value: 48 }
+        }
+    });
+
+    name: string = "groupSettings";
+    displayNameKey: string = "Visual_GroupSettingsCard_DisplayName";
+    slices: Array<FormattingSettingsSlice> = [this.onlyOneActive, this.masterSwitch, this.masterLabel, this.indent, this.rowSpacing];
+
+    // masterLabel only means anything while there's a master row to label. indent stays visible
+    // regardless, since a bound Group enable field also indents the rows below it.
+    onPreProcess(): void {
+        this.masterLabel.visible = this.masterSwitch.value;
+    }
+}
+
+/**
+ * Toggle Names Card - each row's name, which is its bound field's display name (renamed per visual
+ * from the field well, the same as any native visual's field labels). Separate from
+ * toggleSettings' On/Off *state* labels, which describe a toggle's current value rather than
+ * which toggle it is.
+ */
+class NameSettingsCardSettings extends FormattingSettingsCard {
+    show = new formattingSettings.ToggleSwitch({
+        name: "show",
+        displayNameKey: "Visual_ShowNames_DisplayName",
+        descriptionKey: "Visual_ShowNames_Description",
+        value: true
+    });
+
+    position = new formattingSettings.ItemDropdown({
+        name: "position",
+        displayNameKey: "Visual_NamePosition_DisplayName",
+        descriptionKey: "Visual_NamePosition_Description",
+        items: [
+            { value: "left", displayName: "Left" },
+            { value: "right", displayName: "Right" }
+        ],
+        value: { value: "left", displayName: "Left" }
+    });
+
+    // Left/Right pack the name and toggle columns together against one edge; Justify spreads them
+    // to opposite edges of the group (stretching the group to the container's full width to do it).
+    alignment = new formattingSettings.ItemDropdown({
+        name: "alignment",
+        displayNameKey: "Visual_NameAlignment_DisplayName",
+        descriptionKey: "Visual_NameAlignment_Description",
+        items: [
+            { value: "left", displayName: "Left" },
+            { value: "right", displayName: "Right" },
+            { value: "justify", displayName: "Justify" }
+        ],
+        value: { value: "left", displayName: "Left" }
+    });
+
+    spacing = new formattingSettings.NumUpDown({
+        name: "spacing",
+        displayNameKey: "Visual_NameSpacing_DisplayName",
+        descriptionKey: "Visual_NameSpacing_Description",
+        value: 8,
+        options: {
+            unitSymbol: "px",
+            minValue: { type: ValidatorType.Min, value: 0 },
+            maxValue: { type: ValidatorType.Max, value: 64 }
+        }
+    });
+
+    // Same "no live theme API" caveat as toggleSettings.labelFont.
+    font = new formattingSettings.FontControl({
+        name: "nameFont",
+        displayNameKey: "Visual_NameFont_DisplayName",
+        fontFamily: new formattingSettings.FontPicker({
+            name: "nameFontFamily",
+            value: "Segoe UI"
+        }),
+        fontSize: new formattingSettings.NumUpDown({
+            name: "nameFontSize",
+            value: 12,
+            options: {
+                unitSymbol: "px",
+                minValue: { type: ValidatorType.Min, value: 6 },
+                maxValue: { type: ValidatorType.Max, value: 60 }
+            }
+        }),
+        bold: new formattingSettings.ToggleSwitch({ name: "nameFontBold", value: false }),
+        italic: new formattingSettings.ToggleSwitch({ name: "nameFontItalic", value: false }),
+        underline: new formattingSettings.ToggleSwitch({ name: "nameFontUnderline", value: false })
+    });
+
+    fontColor = new formattingSettings.ColorPicker({
+        name: "fontColor",
+        displayNameKey: "Visual_NameFontColor_DisplayName",
+        descriptionKey: "Visual_NameFontColor_Description",
+        value: { value: "#252423" }
+    });
+
+    name: string = "nameSettings";
+    displayNameKey: string = "Visual_NameSettingsCard_DisplayName";
+    slices: Array<FormattingSettingsSlice> = [this.show, this.position, this.alignment, this.spacing, this.font, this.fontColor];
+
+    onPreProcess(): void {
+        this.position.visible = this.show.value;
+        this.spacing.visible = this.show.value;
+        this.font.visible = this.show.value;
+        this.fontColor.visible = this.show.value;
+    }
+}
+
+/**
+ * Container Card - the box drawn around the whole group (title included). Border style is a fixed
+ * set of treatments (see .toggle-group-frame in visual.less) layered over one user colour/width,
+ * the same way toggleSettings.depthEffect layers rgba() shading over whatever solid colour a
+ * toggle already has rather than needing to know its hue.
+ */
+class ContainerSettingsCardSettings extends FormattingSettingsCard {
+    borderStyle = new formattingSettings.ItemDropdown({
+        name: "borderStyle",
+        displayNameKey: "Visual_ContainerBorderStyle_DisplayName",
+        descriptionKey: "Visual_ContainerBorderStyle_Description",
+        items: [
+            { value: "none", displayName: "None" },
+            { value: "flat", displayName: "Flat" },
+            { value: "embossed", displayName: "Embossed" },
+            { value: "gutter", displayName: "Gutter" }
+        ],
+        value: { value: "none", displayName: "None" }
+    });
+
+    borderColor = new formattingSettings.ColorPicker({
+        name: "borderColor",
+        displayNameKey: "Visual_ContainerBorderColor_DisplayName",
+        descriptionKey: "Visual_ContainerBorderColor_Description",
+        value: { value: "#C8C6C4" }
+    });
+
+    borderWidth = new formattingSettings.NumUpDown({
+        name: "borderWidth",
+        displayNameKey: "Visual_ContainerBorderWidth_DisplayName",
+        descriptionKey: "Visual_ContainerBorderWidth_Description",
+        value: 1,
+        options: {
+            unitSymbol: "px",
+            minValue: { type: ValidatorType.Min, value: 0 },
+            maxValue: { type: ValidatorType.Max, value: 8 }
+        }
+    });
+
+    cornerRadius = new formattingSettings.NumUpDown({
+        name: "cornerRadius",
+        displayNameKey: "Visual_ContainerCornerRadius_DisplayName",
+        descriptionKey: "Visual_ContainerCornerRadius_Description",
+        value: 4,
+        options: {
+            unitSymbol: "px",
+            minValue: { type: ValidatorType.Min, value: 0 },
+            maxValue: { type: ValidatorType.Max, value: 32 }
+        }
+    });
+
+    padding = new formattingSettings.NumUpDown({
+        name: "padding",
+        displayNameKey: "Visual_ContainerPadding_DisplayName",
+        descriptionKey: "Visual_ContainerPadding_Description",
+        value: 8,
+        options: {
+            unitSymbol: "px",
+            minValue: { type: ValidatorType.Min, value: 0 },
+            maxValue: { type: ValidatorType.Max, value: 48 }
+        }
+    });
+
+    verticalAlignment = new formattingSettings.ItemDropdown({
+        name: "verticalAlignment",
+        displayNameKey: "Visual_ContainerVerticalAlignment_DisplayName",
+        descriptionKey: "Visual_ContainerVerticalAlignment_Description",
+        items: [
+            { value: "top", displayName: "Top" },
+            { value: "middle", displayName: "Middle" },
+            { value: "bottom", displayName: "Bottom" }
+        ],
+        value: { value: "middle", displayName: "Middle" }
+    });
+
+    // Formerly toggleSettings.showBackground/backgroundColor ("Show switch background") - the fill
+    // now belongs to the group's container rather than a single switch. The "group" qualifier in
+    // their display names serves the same purpose "switch" used to: telling this apart from Power
+    // BI's own native General -> Background, which every visual gets and this code can't touch.
+    showBackground = new formattingSettings.ToggleSwitch({
+        name: "showBackground",
+        displayNameKey: "Visual_ShowBackground_DisplayName",
+        descriptionKey: "Visual_ShowBackground_Description",
+        value: false
+    });
+
+    backgroundColor = new formattingSettings.ColorPicker({
+        name: "backgroundColor",
+        displayNameKey: "Visual_BackgroundColor_DisplayName",
+        descriptionKey: "Visual_BackgroundColor_Description",
+        value: { value: "#FFFFFF" }
+    });
+
+    name: string = "containerSettings";
+    displayNameKey: string = "Visual_ContainerSettingsCard_DisplayName";
+    slices: Array<FormattingSettingsSlice> = [
+        this.borderStyle, this.borderColor, this.borderWidth, this.cornerRadius,
+        this.padding, this.verticalAlignment, this.showBackground, this.backgroundColor
+    ];
+
+    onPreProcess(): void {
+        const hasBorder = this.borderStyle.value.value !== "none";
+        this.borderColor.visible = hasBorder;
+        this.borderWidth.visible = hasBorder;
+        this.backgroundColor.visible = this.showBackground.value;
     }
 }
 
@@ -266,7 +491,7 @@ class ToggleSettingsCardSettings extends FormattingSettingsCard {
  * native title off and use this one instead.
  */
 class TitleSettingsCardSettings extends FormattingSettingsCard {
-    // Left blank here rather than a static "Toggle label" default - unlike onLabel/offLabel's
+    // Left blank here rather than a static "Toggle group" default - unlike onLabel/offLabel's
     // placeholders (plain English by established convention, since a report author is expected to
     // retype them immediately), a title many report authors may never touch would otherwise show
     // fixed, unlocalized English text in production reports. render() instead resolves the *shown*
@@ -278,15 +503,15 @@ class TitleSettingsCardSettings extends FormattingSettingsCard {
         name: "text",
         displayNameKey: "Visual_TitleText_DisplayName",
         descriptionKey: "Visual_TitleText_Description",
-        placeholder: "Toggle label",
+        placeholder: "Toggle group",
         value: ""
     });
 
-    // "Inline left" (default) keeps the title before the switch, as "Inline" always has; "Inline
-    // right" places it after instead. Unlike toggleSettings.labelPosition, there's no "show only one
-    // of two things" question here - the title's text never depends on the switch's state - so this
-    // is a straightforward left/right swap of render()'s DOM order via CSS order, not a behaviour
-    // change to what's shown.
+    // "Above" (default) heads the group like a fieldset legend - the natural layout for a list of
+    // toggles. "Inline left"/"Inline right" place it before/after the group instead. Unlike
+    // toggleSettings.labelPosition, there's no "show only one of two things" question here - the
+    // title's text never depends on any toggle's state - so this is a straightforward swap of
+    // render()'s DOM order via CSS order, not a behaviour change to what's shown.
     position = new formattingSettings.ItemDropdown({
         name: "position",
         displayNameKey: "Visual_TitlePosition_DisplayName",
@@ -296,7 +521,7 @@ class TitleSettingsCardSettings extends FormattingSettingsCard {
             { value: "inline-right", displayName: "Inline right" },
             { value: "above", displayName: "Above" }
         ],
-        value: { value: "inline-left", displayName: "Inline left" }
+        value: { value: "above", displayName: "Above" }
     });
 
     // Governs where the whole title+switch assembly (titleWrapEl) sits within the visual's tile,
@@ -365,10 +590,11 @@ class TitleSettingsCardSettings extends FormattingSettingsCard {
 }
 
 /**
- * Size Settings Card - the switch's height (width follows at a fixed 2:1 ratio, so only one
- * dimension needs a control). "Responsive" fluidly scales the switch with the visual's own height
- * between minHeight/maxHeight (CSS clamp() + container query units in visual.less); "Fixed" locks
- * it to a single explicit height regardless of the tile's size.
+ * Size Settings Card - every toggle's height (width follows at a fixed ratio - 2:1 for the toggle
+ * skin, 1:1 for checkbox/radio - so only one dimension needs a control). "Responsive" fluidly
+ * scales the toggles with the visual's own height *per row* between minHeight/maxHeight (CSS
+ * clamp() + container query units in visual.less, divided by --toggle-row-count); "Fixed" locks
+ * them to a single explicit height regardless of the tile's size.
  */
 class SizeSettingsCardSettings extends FormattingSettingsCard {
     mode = new formattingSettings.ItemDropdown({
@@ -440,9 +666,15 @@ class SizeSettingsCardSettings extends FormattingSettingsCard {
 */
 export class VisualFormattingSettingsModel extends FormattingSettingsModel {
     // Create formatting settings model formatting cards
+    groupSettingsCard = new GroupSettingsCardSettings();
     toggleSettingsCard = new ToggleSettingsCardSettings();
+    nameSettingsCard = new NameSettingsCardSettings();
+    containerSettingsCard = new ContainerSettingsCardSettings();
     titleSettingsCard = new TitleSettingsCardSettings();
     sizeSettingsCard = new SizeSettingsCardSettings();
 
-    cards = [this.toggleSettingsCard, this.titleSettingsCard, this.sizeSettingsCard];
+    cards = [
+        this.groupSettingsCard, this.toggleSettingsCard, this.nameSettingsCard,
+        this.containerSettingsCard, this.titleSettingsCard, this.sizeSettingsCard
+    ];
 }

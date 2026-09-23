@@ -1,6 +1,6 @@
-# Toggle Slicer Visual
+# Toggle Group Visual
 
-A custom Power BI visual: a two-state (on/off) toggle switch that drives a DAX-based filter toggle in Power BI reports. It replaces a standard slicer styled to look like a switch, giving a cleaner, purpose-built end-user control for a pattern that gets reused across multiple reports.
+A custom Power BI visual: a **group of on/off toggles**, one per field, each driving its own DAX-readable filter. Draw them as sliding switches, checkboxes or radio buttons, box them in a flat, embossed or gutter border, and give the group rules: **Only one active**, a **Master switch**, and a **Group enable** toggle that greys out the rest. It replaces a stack of standard slicers styled to look like switches, giving report users a cleaner, purpose-built control for a pattern that gets reused across many reports.
 
 Built by a Health Data Analyst Business Partner at Health New Zealand | Te Whatu Ora, for use in internal Power BI reporting.
 
@@ -8,9 +8,12 @@ Built by a Health Data Analyst Business Partner at Health New Zealand | Te Whatu
 
 - [Quick start](#quick-start)
 - [How it works](#how-it-works)
+- [Tables and bridges](#tables-and-bridges)
+- [Group rules](#group-rules)
 - [Features](#features)
 - [Format pane options](#format-pane-options)
 - [Troubleshooting](#troubleshooting)
+- [Upgrading from the single Toggle Slicer](#upgrading-from-the-single-toggle-slicer)
 - [Roadmap](#roadmap)
 - [Development](#development)
 - [Deployment](#deployment)
@@ -18,7 +21,7 @@ Built by a Health Data Analyst Business Partner at Health New Zealand | Te Whatu
 
 ## Quick start
 
-This walks through going from nothing to a working switch on a report page. It assumes Power BI Desktop and no prior custom-visual experience.
+This walks through going from nothing to a working toggle group on a report page. It assumes Power BI Desktop and no prior custom-visual experience.
 
 ### 1. Get the `.pbiviz` file
 
@@ -30,25 +33,25 @@ npm install
 npx pbiviz package
 ```
 
-The packaged file lands in `dist/` as `toggleSlicerVisual.<version>.pbiviz` (the exact name/casing come from `pbiviz.json`'s `visual.name`/`version`, e.g. `toggleSlicerVisual.1.0.0.12.pbiviz` — it changes on every version bump, so don't hardcode it). See [Development](#development) if `pbiviz` isn't installed.
+The packaged file lands in `dist/` as `toggleSlicerVisual.<version>.pbiviz` (the exact name comes from `pbiviz.json`'s `visual.name`/`version` and changes on every version bump, so don't hardcode it). See [Development](#development) if `pbiviz` isn't installed.
 
 ### 2. Import it into your report
 
 In Power BI Desktop:
 
-1. Open (or create) the report you want to add the switch to.
+1. Open (or create) the report you want to add the toggles to.
 2. In the **Visualizations** pane, click the **···** (ellipsis) → **Import a visual from a file**.
 3. Browse to the `.pbiviz` file from step 1 and select it. Dismiss the "custom visuals aren't certified" warning — this is expected for any non-AppSource visual.
 
-The switch icon now appears at the bottom of your Visualizations pane, ready to drag onto the canvas.
+The **Toggle Group** icon now appears at the bottom of your Visualizations pane.
 
-### 3. Build the disconnected table and measure
+### 3. Build one small table per toggle
 
-This visual doesn't filter your existing data directly — it drives a small **disconnected** table that the rest of your model reads through a measure. In Power BI Desktop, go to **Modeling → New table** and paste:
+Each toggle is its own tiny **disconnected** table. The table's *column name* becomes the toggle's name in the visual, so give it a readable, sentence-case name. **Modeling → New table**:
 
 ```dax
-ToggleTable = DATATABLE(
-    "Toggle", STRING,
+Show Budget = DATATABLE(
+    "Show budget", STRING,
     "Value", INTEGER,
     {
         {"On", 1},
@@ -57,139 +60,264 @@ ToggleTable = DATATABLE(
 )
 ```
 
-Then **Modeling → New measure**:
+Then **Modeling → New measure** that reads it:
 
 ```dax
-ToggleState = SELECTEDVALUE(ToggleTable[Value], 0)
+Show Budget State = SELECTEDVALUE('Show Budget'[Value], 0)
 ```
 
-Leave `ToggleTable` unrelated to every other table in your model — that's what makes it "disconnected," and it's what lets one switch drive logic anywhere in the report without accidentally filtering unrelated visuals. `ToggleState` is what you'll reference elsewhere, for example inside another measure:
+Repeat for each toggle you want in the group (e.g. `Include ED`, `Exclude Outliers`). Use `[Show Budget State]` anywhere else in the model, e.g.:
 
 ```dax
 Sales or Budget =
 IF(
-    [ToggleState] = 1,
-    [Total Sales],
-    [Total Budget]
+    [Show Budget State] = 1,
+    [Total Budget],
+    [Total Sales]
 )
 ```
 
-> The `"On"`/`"Off"` text values are just the convention this README uses — `"True"`/`"False"` and `1`/`0` work too (see [How it works](#how-it-works)). The switch itself always renders **Off** on first load, before anyone has clicked it or a bookmark has applied a selection — it has no way to read `SELECTEDVALUE`'s fallback back out of your measure. Set that fallback (the second argument, `0` above) to whatever value your `ToggleTable` uses for Off, so the rest of your report's default state agrees with what the switch actually starts showing, rather than the other way around.
+> `"On"`/`"Off"` is just the convention used here — `"True"`/`"False"` and `1`/`0` work too, and each toggle is checked independently, so one group can mix conventions. Every toggle renders **Off** until someone clicks it (or a bookmark applies a state), so set each measure's `SELECTEDVALUE` fallback (the `0` above) to your Off value. See [Tables and bridges](#tables-and-bridges) if a toggle needs to filter real data through relationships instead of a measure.
 
-### 4. Add the switch to the canvas and bind the field
+### 4. Add the visual and bind the fields
 
-1. Drag the **Toggle Slicer** icon from the Visualizations pane onto the report canvas.
-2. With it selected, drag `ToggleTable[Toggle]` from the Fields pane into the visual's **Toggle** field well.
-3. The switch should immediately render. If instead you see a validation message, see [Troubleshooting](#troubleshooting).
+1. Drag the **Toggle Group** icon onto the report canvas.
+2. Drag your first toggle's column (e.g. `'Show Budget'[Show budget]`) into the **Toggles** field well. The toggle appears straight away, and **a new empty slot appears below it** in the well, ready for the next one.
+3. Keep dragging columns in — one per toggle, up to 12. Rows render in the order they sit in the well; drag within the well to reorder them.
+4. To rename a toggle for this visual only, use **Rename for this visual** on the field in the well.
+5. *(Optional)* Drag a Group enable column into **Group enable** — see [Group rules](#group-rules).
 
-### 5. Style it from the Format pane
+If you see a validation message instead, see [Troubleshooting](#troubleshooting).
 
-With the visual selected, open the **Format visual** pane (the paint-roller icon) and open the **Toggle Settings**, **Title** and **Size** cards. Every property is listed in [Format pane options](#format-pane-options) below — common first tweaks:
+### 5. Set the rules and style
 
-- **Control style** — leave as **Toggle** for a sliding switch, or set to **Checkbox** for a square tick-box look.
-- **On colour** / **Off colour** — by default, On follows your report theme's first data colour automatically; set your own to override that.
-- **On label** / **Off label** and **Show labels** — turn labels on and relabel them (e.g. "Actual"/"Budget") to match what the switch actually controls.
-- **Title text** — give the switch its own heading (e.g. "View by:") without relying on Power BI's native visual title.
+With the visual selected, open the **Format visual** pane. The cards are listed in [Format pane options](#format-pane-options). Common first tweaks:
+
+- **Group rules → Only one active / Master switch** — see [Group rules](#group-rules).
+- **Toggle Settings → Control style** — **Toggle**, **Checkbox**, or **Radio**. Radio pairs naturally with Only one active.
+- **Container → Border style** — **Flat**, **Embossed** (raised) or **Gutter** (recessed).
+- **Toggle Settings → Make it fancy!** — glossy, raised toggles for any control style.
+- **Title → Title text** — a heading for the group (e.g. "Budget options").
 
 ### 6. Test it
 
-Click the switch. It should visually flip, and any visual/measure using `[ToggleState]` should update immediately — the same way a native slicer would. Try **Sync slicers** (View → Sync slicers) if you want one switch to control multiple report pages, and check a bookmark you create still restores the switch's position correctly.
+Click each toggle; any visual using its measure should update immediately, the same as with a native slicer. Check that a bookmark restores every toggle's state, and try **View → Sync slicers** if one group should control several pages.
 
 ### 7. Share it
 
 - **One report, personal use:** nothing further to do — the visual is embedded in the `.pbix` once you've used it.
-- **Reuse across reports:** re-import the same `.pbiviz` into each report (steps 2–5), or see [Deployment](#deployment) for publishing it org-wide so it shows up for every report author without a manual import.
+- **Reuse across reports:** re-import the same `.pbiviz` into each report, or see [Deployment](#deployment) for publishing it org-wide.
 
 ## How it works
 
-The visual binds to a single categorical field from a disconnected table in the report's data model — see [step 3](#3-build-the-disconnected-table-and-measure) above for the exact DAX.
+Each field in the **Toggles** well is one toggle. Clicking a toggle writes a real slicer-style filter on that field's column (the same `general.filter` mechanism a native slicer uses). The visual keeps **one basic filter per field**, `'Show Budget'[Show budget] IN {"On"}` or `IN {"Off"}`, and always writes the whole group's set at once. So:
 
-Clicking the switch applies a real filter on `ToggleTable[Toggle]` (the same mechanism a native slicer uses, via Power BI's `general.filter` object), so `SELECTEDVALUE(ToggleTable[Value], 0)` — and anything built on it — continues to work unchanged. The bound column's two values don't have to be literally `"On"`/`"Off"` text — `"True"`/`"False"` and `1`/`0` are also accepted (case-insensitive, whitespace-trimmed), so a `BOOLEAN` or `INTEGER` column works too. Because it's a real filter rather than an internal setting, the switch's state persists across saves, survives bookmarks, and can be synced across pages exactly like a native slicer.
+- `SELECTEDVALUE('Show Budget'[Value], 0)` — and anything built on it — reads each toggle exactly like a slicer.
+- State persists across saves, survives bookmarks, and can be synced across pages.
+- A toggle that's Off applies its **Off** value rather than clearing its filter, so bridge tables can map Off to "everything" (see below).
+
+Fields from separate tables reach the visual cross-joined (every combination of every field's values), so the visual de-duplicates each column on its own and checks each one has exactly one On value and one Off value. That cross join is also why a group is capped at 12 toggles: 2¹² combinations is still a trivially small query, but it doubles with every field added.
+
+If you remove a field from the well, its filter would otherwise stay applied invisibly. The visual rewrites the filter set on its next update to drop it.
+
+## Tables and bridges
+
+Moving from one switch to a group changes the recommended model from "one `ToggleTable` per report" to **"one small table per toggle"**. This is deliberate: separate tables are what let each toggle filter independently. Putting several On/Off columns in one table would need a row for every combination, and a filter on one column would silently constrain the others.
+
+### Pattern A — measure-driven (recommended)
+
+One disconnected table + one measure per toggle, exactly as in [Quick start](#3-build-one-small-table-per-toggle). Nothing relates to the rest of the model, and measures decide what each toggle means. This supports every group rule, including Group enable.
+
+### Pattern B — bridge-driven (filter real data through relationships)
+
+Use this when a toggle should filter a dimension directly, e.g. "Show budget-holding cost centres only". Each toggle gets its own bridge that maps **On → the subset** and **Off → every member**:
+
+```dax
+Bridge Show Budget =
+UNION(
+    SELECTCOLUMNS(
+        FILTER('Cost Centre', 'Cost Centre'[Has Budget]),
+        "Toggle", "On", "Cost Centre Key", 'Cost Centre'[Cost Centre Key]
+    ),
+    SELECTCOLUMNS(
+        'Cost Centre',
+        "Toggle", "Off", "Cost Centre Key", 'Cost Centre'[Cost Centre Key]
+    )
+)
+```
+
+Relationships:
+
+- `'Show Budget'[Show budget]` (one) → `'Bridge Show Budget'[Toggle]` (many), single direction.
+- `'Bridge Show Budget'[Cost Centre Key]` (many) → `'Cost Centre'[Cost Centre Key]` (one), **both directions**, so the filter can flow from the bridge up to the dimension.
+
+With several bridged toggles on the same dimension, their filters **intersect** (AND): each On toggle narrows the dimension further, and each Off toggle leaves it untouched. Combined with **Only one active**, that gives a "pick one lens" control: exactly one subset applies at a time, or none.
+
+> **Group enable with bridges:** switching Group enable Off greys the toggles out but does *not* remove their filters, because the toggles keep their state by design. Bridge filters therefore keep applying while the group is disabled. If disabling the group has to neutralise the toggles, use Pattern A and gate the measures (below).
+
+### Group enable table
+
+Build it like any other toggle table, but give its measure a fallback of **1**, because Group enable renders **On** until someone first switches it Off (so a new group isn't born disabled):
+
+```dax
+Group Enable = DATATABLE(
+    "Budget options enabled", STRING,
+    "Value", INTEGER,
+    {
+        {"On", 1},
+        {"Off", 0}
+    }
+)
+
+Show Budget Active =
+IF(
+    SELECTEDVALUE('Group Enable'[Value], 1) = 1,
+    [Show Budget State],
+    0
+)
+```
+
+## Group rules
+
+All in the **Group rules** card, except Group enable, which comes from binding a field.
+
+| Rule | What it does |
+|---|---|
+| **Only one active** | Turning a toggle On turns every other toggle Off. Turning the active one Off leaves none On — except with the **Radio** control style, where (like a native radio group) the active option can't be clicked Off. |
+| **Master switch** | Adds a master toggle at the top; the rest are indented by **Indent** px. Master On/Off sets every toggle below it On/Off. It shows **On** when all are On, **Off** when none are, and **mixed** (a dash on the checkbox; a half-way knob on the toggle) when only some are. Clicking a mixed master turns them all On. It has no field of its own. Under Only one active, "all On" isn't allowed, so the master reads On when *any* toggle is On, and switching it On selects the first toggle. |
+| **Group enable** | Bind an On/Off field to the **Group enable** well. It's drawn as a header toggle at the very top, and everything below it (master included) is indented. Switching it Off **disables** the toggles below it — greyed out, not clickable, out of the tab order — **without changing their state**. Because it's a real field, DAX can read it (see [Group enable table](#group-enable-table)). |
+
+Master switch and Group enable can be combined: Group enable at the top, master below it, toggles below that, each level indented. Under the **Radio** style, header rows (master, Group enable) are drawn as checkboxes, since they aren't one of the mutually exclusive options.
 
 ## Features
 
-- **Control style** — draw the control as a sliding toggle switch or a checkbox; both share the same colours, border and "Make it fancy!" treatment.
-- **Sync slicers** — selection can be synced across report pages via the Sync Slicers pane, same as a native slicer.
-- **High contrast** support — substitutes the theme's colours when Power BI's high-contrast mode is active.
-- **Keyboard accessible** — focusable, toggles with <kbd>Space</kbd>/<kbd>Enter</kbd>, and its accessible name always states both states and which is current (and matches whichever role — switch or checkbox — is currently drawn).
-- **Tooltip** on hover showing the current state.
-- **Context menu** (right-click) with the standard Power BI filter/drill options.
-- **Bookmarks** — stays in sync when a bookmark, another synced slicer, or "clear all filters" changes the selection.
-- **Respects Allow Interactions** — shows a visibly read-only state and ignores input in contexts like Focus mode thumbnails where interactivity is disabled.
-- **Responsive** — the switch scales fluidly with the visual's own height between a configurable min/max (or lock it to one fixed size), and labels scale/hide on small tiles.
-- **Hover feedback** — a subtle shadow on hover (no movement), off automatically under reduced-motion settings.
-- **"Make it fancy!"** (optional) — a raised, glossy skeuomorphic look instead of a flat fill.
-- **Landing page** guides report authors who haven't bound a field yet with a copyable step-by-step DAX guide (once the tile's big enough to show it), and a validation message covers a field bound to the wrong shape of data.
+- **Dynamic field well** — drop in a field and a new empty slot appears below it; one toggle row per field, up to 12.
+- **Three control styles** — sliding **Toggle**, square **Checkbox** or round **Radio**. All three share the same colours, border, sizing and "Make it fancy!" treatment.
+- **Group rules** — Only one active, Master switch (with mixed state), and Group enable (disable without resetting).
+- **Container border** — None, Flat, Embossed or Gutter, with colour, width, corner radius, padding and optional fill.
+- **Aligned layout** — names and toggles line up in columns, with names on either side and Left/Right/Justify alignment.
+- **Sync slicers**, **bookmarks** and **persisted state** — every toggle's state is a real filter.
+- **Keyboard accessible** — <kbd>Space</kbd>/<kbd>Enter</kbd> toggle, arrow keys and <kbd>Home</kbd>/<kbd>End</kbd> move between rows, and an exclusive radio group is a single Tab stop. Each control's accessible name includes its toggle name and current state, and its role matches what's drawn (switch, checkbox or radio).
+- **Clickable names** — clicking a toggle's name toggles it, like a native label.
+- **High contrast** — theme colours replace custom colours when Power BI's high-contrast mode is active.
+- **Tooltip** and **context menu** per toggle.
+- **Respects Allow Interactions** — read-only state where interactivity is disabled.
+- **Responsive** — toggles scale with the tile's height shared across the rows (between a configurable min/max), or lock to a fixed size; state labels hide on narrow tiles.
+- **Landing page** with a skeleton preview and a copyable starter-DAX guide; a validation message names any field that isn't a valid On/Off pair.
 
 ## Format pane options
 
+### Group rules
+
 | Property | Description | Default |
 |---|---|---|
-| Control style | Draw the control as a sliding Toggle switch, or a square Checkbox | Toggle |
-| On colour | Fill colour of the switch track when On | Report theme's first data colour, until you pick your own |
-| Off colour | Fill colour of the switch track when Off | Grey |
-| On label | Text shown next to the switch when On | "On" |
-| Off label | Text shown next to the switch when Off | "Off" |
-| Show labels | Show the On/Off label text next to the switch when there's room for it | Off |
-| Label position | The current-state label to the left or right of the switch (Label left / Label right), or centred above it (Above) | Label left |
-| Alignment | Position of the switch+label row within the tile: Left, Right, or Justify (spreads the label and switch to opposite ends). Only shown when Label position is Above — with Label left/right, the row shares its space with the title, whose own Alignment (below) governs it instead | Left |
-| Label spacing | Space in pixels between the switch and its label(s) | 8px |
-| Label font | Family/size/bold/italic/underline of the On/Off label text | Segoe UI, 12px, regular |
-| Label font colour | Colour of the On/Off label text | Dark grey |
-| Show switch background | Fill a background behind the switch and its label(s). Separate from Power BI's own native General → Background, which every visual gets automatically | Off |
-| Switch background colour | Fill colour behind the switch and its label(s), when Show switch background is on | White |
-| Show border | Show a coloured border around the switch track | Off |
-| Border colour | Colour of the switch track's border, when Show border is on | Dark grey |
-| Border width | Width in pixels of the switch track's border, when Show border is on | 2px |
-| Make it fancy! | Give the switch a raised, glossy look with shading and shadows instead of a flat fill | Off |
-| Title text | Static heading text this visual renders itself, positioned beside or above the switch (separate from Power BI's own native visual title) | "Toggle label" |
-| Title position | Before the switch (Inline left), after it (Inline right), or centred above it (Above) | Inline left |
-| Title alignment | Position of the title+switch group within the tile: Left, Right, or Justify (spreads the title and switch to opposite ends) | Left |
-| Title spacing | Space in pixels between the switch and the title | 8px |
-| Title font | Family/size/bold/italic/underline of the title text | Segoe UI, 14px, bold |
-| Title font colour | Colour of the title text | Dark grey |
-| Size mode | Scale fluidly between Min/Max height as the tile is resized (Responsive), or lock to one Fixed height (Fixed) | Responsive |
-| Min height | Smallest height in pixels the switch scales down to, in Responsive mode. Width always follows at a fixed 2:1 ratio | 16px |
-| Max height | Largest height in pixels the switch scales up to, in Responsive mode. Width always follows at a fixed 2:1 ratio | 22px |
-| Fixed height | Exact height in pixels the switch is drawn at, in Fixed mode, regardless of tile size. Width always follows at a fixed 2:1 ratio | 22px |
+| Only one active | Turning a toggle On turns every other toggle Off | Off |
+| Master switch | Add a master toggle at the top that turns every toggle On/Off | Off |
+| Master label | Name shown next to the master toggle (only while Master switch is on) | "All" |
+| Indent | Pixels each level is indented below a master or Group enable toggle | 16px |
+| Row spacing | Space in pixels between rows | 8px |
 
-The two font properties' defaults are a static approximation of a typical report theme, not a live readout of one — Power BI gives custom visuals no way to read the report's actual chosen typography (unlike colour, where `On colour`'s default *does* follow the theme's first data colour). If you turn on `Show switch background` and still see a fill behind the switch after turning it back off, check Format → General → Background — that's Power BI's own native background, present on every visual and entirely separate from this one.
+### Toggle Settings
+
+| Property | Description | Default |
+|---|---|---|
+| Control style | Toggle switch, Checkbox, or Radio button | Toggle |
+| On colour | Fill of each toggle when On | Report theme's first data colour, until you pick your own |
+| Off colour | Fill of each toggle when Off | Grey |
+| On label / Off label | State text shown next to a toggle when On/Off | "On" / "Off" |
+| Show labels | Show the On/Off state text next to each toggle | Off |
+| Label position | State text left or right of each toggle (Label left / Label right), or above it (Above) | Label left |
+| Label spacing | Space in pixels between a toggle and its state text | 8px |
+| Font / Font colour | Typography of the state text | Arial, 12px, bold / Dark blue |
+| Show border / Border colour / Border width | A coloured ring around each toggle's track | Off / Dark grey / 2px |
+| Make it fancy! | Raised, glossy look with shading and shadows | Off |
+
+### Toggle names
+
+| Property | Description | Default |
+|---|---|---|
+| Show names | Show each toggle's name (its field's display name — rename it in the well) | On |
+| Name position | Name to the Left or Right of its toggle | Left |
+| Alignment | Pack names and toggles to the Left or Right, or Justify them to opposite edges | Left |
+| Name spacing | Space in pixels between a name and its toggle | 8px |
+| Font / Font colour | Typography of the names | Segoe UI, 12px / Near-black |
+
+### Container
+
+| Property | Description | Default |
+|---|---|---|
+| Border style | None, Flat (a plain line), Embossed (raised) or Gutter (recessed) | None |
+| Border colour / Border width | Colour and width of the group's border (shown when a style is chosen) | Light grey / 1px |
+| Corner radius | Roundness of the group's corners | 4px |
+| Padding | Space between the border and its contents | 8px |
+| Vertical alignment | Top, Middle or Bottom of the tile | Middle |
+| Show group background / Group background colour | Fill inside the container. Separate from Power BI's native General → Background | Off / White |
+
+### Title
+
+| Property | Description | Default |
+|---|---|---|
+| Title text | Heading this visual renders itself (separate from Power BI's native visual title). Clear it to hide | "Toggle group" |
+| Title position | Above the group, or before/after it (Inline left / Inline right) | Above |
+| Alignment | Left, Right, or Justify (title and group to opposite ends) | Left |
+| Title spacing | Space in pixels between the title and the group | 8px |
+| Font / Font colour | Typography of the title | Segoe UI, 14px, bold / Dark grey |
+
+### Size
+
+| Property | Description | Default |
+|---|---|---|
+| Size mode | Responsive (scale with the tile's height, shared across rows) or Fixed | Responsive |
+| Min height / Max height | Bounds of each toggle's height in Responsive mode | 16px / 22px |
+| Fixed height | Each toggle's exact height in Fixed mode | 22px |
+
+Width always follows height: 2:1 for the Toggle style, 1:1 for Checkbox and Radio. The font defaults are static — Power BI gives custom visuals no way to read the report theme's typography (unlike colour, where On colour follows the theme).
 
 ## Troubleshooting
 
-**I see an info icon and "Select or drag a field to populate this visual" instead of a switch.**
-No field is bound to the **Toggle** data role yet — drag `ToggleTable[Toggle]` (or your own equivalent field) into it. Resize the tile larger and a copyable starter-DAX guide appears alongside the hint if you need to build the table/measure from scratch.
+**I see "Drag one field per toggle into Toggles to build the group".**
+Nothing is bound to **Toggles** yet (a Group enable field on its own isn't enough). Resize the tile larger to reveal a copyable starter-DAX guide.
 
-**I see a message saying the field must contain exactly one On row and one Off row.**
-The bound field is either not shaped correctly, or filtered/related in a way that changes what rows reach the visual. It needs to resolve to **exactly two rows**, one matching an On alias (`"On"`, `"true"`, or `"1"`, case-insensitive) and one matching an Off alias (`"Off"`, `"false"`, or `"0"`). Mixing conventions across the two rows (e.g. `"On"` / `"0"`) is fine; three rows, zero rows, or two rows that are both "On"-shaped is not.
+**I see a message saying a field must contain exactly one On row and one Off row.**
+The message names the field. It must resolve to exactly two values, one On-shaped (`"On"`, `"true"`, `1`, case-insensitive) and one Off-shaped (`"Off"`, `"false"`, `0`). The usual cause is binding a real column (e.g. Region), or putting several toggles' columns in one table so their values multiply. Give each toggle its own table.
 
-**Clicking the switch doesn't do anything.**
-Check **Format → General → Edit interactions**/**Allow interactions** isn't disabled for this visual, and that you're not viewing a Focus-mode thumbnail or an export/embed context where interactivity is intentionally turned off — the switch shows a visibly read-only state (default cursor, reduced opacity) in these cases.
+**Clicking a toggle does nothing / it's greyed out.**
+If there's a Group enable toggle at the top, it's Off — switch it On. Otherwise check the visual isn't in a read-only context (Focus mode thumbnail, some embeds), where toggles show a reduced-opacity read-only state.
 
-**The switch doesn't visually match the measure on first load.**
-The switch always renders Off on first load, specifically because no filter has been applied yet — it has no way to read `SELECTEDVALUE(ToggleTable[Value], 0)`'s fallback value back out of your measure, so changing that fallback doesn't change what the switch shows. The dependency runs the other way: make sure the fallback you choose (the second argument) is whatever value your `ToggleTable` uses for Off, so the rest of your model's default state agrees with the switch's fixed starting position instead of contradicting it.
+**Clicking the active radio doesn't turn it off.**
+That's radio behaviour under Only one active. Add a Master switch to clear the group, or use the Toggle/Checkbox style to allow clicking the active option Off.
 
-**I turned on "Show switch background" but nothing changed.**
-Every Power BI visual — native or custom — also has its own separate background under Format → General → Background. "Show switch background" only controls a fill directly behind the switch and its labels; check you're not looking at the native one instead.
+**Turning on Only one active didn't turn anything off.**
+Rules apply on the next click, so a group that already has several toggles On keeps them until someone clicks.
 
-**A custom On colour/border/font isn't showing.**
-Windows High Contrast mode overrides custom colours with the active theme's palette for legibility — this is intentional and matches how native visuals behave under high contrast.
+**Disabling the group didn't change my numbers.**
+By design, Group enable disables the controls without changing their state or filters. Gate your measures on the Group enable field — see [Group enable table](#group-enable-table).
+
+**The toggles don't match my measures on first load.**
+Every toggle starts Off (Group enable starts On) until clicked, since the visual can't read `SELECTEDVALUE`'s fallback out of your DAX. Make each fallback match: `0`/Off for toggles, `1`/On for Group enable.
+
+**A custom colour or font isn't showing.**
+High Contrast mode overrides custom colours with the theme's palette, for legibility.
+
+## Upgrading from the single Toggle Slicer
+
+This visual keeps the same GUID and the same `toggle` data role, so an existing report upgrades in place and its single bound field becomes a group of one. A few things change:
+
+- The field's display name now shows as the toggle's name. Turn off **Toggle names → Show names** to get the old look back, or rename the field in the well.
+- **Title position** now defaults to **Above**. Reports that never set it will move the title; set it back to **Inline left** if needed.
+- **Show switch background** has moved to **Container → Show group background**; a report that had it on needs it switching on again there.
+- The old **Toggle Settings → Alignment** property has been removed; row alignment is now **Toggle names → Alignment**.
+- The existing filter on the bound field is read as before, so the toggle's state carries over.
 
 ## Roadmap
 
-### Vertical orientation and more than two states (planned)
+### More than two states per toggle (not scheduled)
 
-Goal: let the switch render as a vertical slider, and support more than two discrete states (e.g. Off/Mid/On, or 1/2/3/4) instead of only a binary On/Off — while keeping today's simple two-state horizontal switch working exactly as it does now, unchanged, as the default.
+Each row is still binary. A multi-state row (e.g. Off/Mid/On, as a stepped slider) would need an explicit ordering for its values instead of the On/Off alias matching, a "select the chosen stop" interaction in place of flipping, and per-state labels. It's recorded here so the shape of the problem isn't lost, not because it's planned.
 
-This is a bigger change than the Format-pane options above and touches the data contract, not just styling, so it needs its own design pass before starting. Rough shape of the work:
+### Vertical orientation (not scheduled)
 
-1. **Data role / validation** — `update()`'s current rule ("exactly one On row and one Off row") only makes sense for two states. Multi-state needs an explicit **ordering** for the bound field's rows (DAX categorical order isn't guaranteed to match the intended sequence), most likely a required sort/rank so `capabilities.json`'s `dataReductionAlgorithm` and the validation logic can agree on "row N = state N" rather than matching against `ON_VALUES`/`OFF_VALUES` string aliases. The existing two-state `ToggleTable` pattern (`"On"`/`"Off"`, `1`/`0`) should keep working as the N=2 case of whatever this becomes, not be replaced by it.
-2. **Interaction model** — a single click no longer means "flip the only other state." Options to weigh: click advances to the next state and wraps around; clicking a position along the track jumps straight to the nearest stop (more slider-like, probably the better fit for a vertical multi-state control); keyboard arrow keys step between stops either way. `handleToggleClick()`'s current clear-then-select-the-other-row logic needs to generalize to "select whichever stop was chosen," and the `isToggling` race guard still applies.
-3. **Rendering** — a new `Orientation` property (Horizontal default, Vertical) rotates the track/knob axis; the knob's offset generalizes from today's binary `0` or `trackWidth - trackHeight` to `stopIndex / (stateCount - 1) * (trackLength - knobSize)` along whichever axis is active. Evenly-spaced stops, not arbitrary positions, to start.
-4. **Labels** — `onLabel`/`offLabel` becomes a per-state list. The existing `labelPosition: "above"` behavior (show only the current state's label, centred) generalizes cleanly to N states without a redesign; the `"inline"` (flanking) behavior does not, and needs its own treatment (labels/tick marks alongside each stop) or could simply be unsupported once state count > 2.
-5. **Scope for a first pass** — rather than an arbitrary N, constrain the first version to a small fixed choice (e.g. 3 or 4 states as explicit Format-pane slots, similar to today's `onColor`/`offColor` pair extended) rather than a fully dynamic list, since `formattingSettings` doesn't have a built-in repeatable-list editor to lean on.
-
-None of this is scheduled work yet — it's here so the shape of the problem (and the parts of the current design it would need to change) isn't lost before someone picks it up.
+Rendering each switch's track vertically. With the group already stacking rows vertically, the use case is narrower than it was for a single switch.
 
 ## Development
 

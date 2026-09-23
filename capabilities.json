@@ -1,21 +1,25 @@
 {
     "dataRoles": [
         {
-            "displayName": "Toggle",
+            "displayName": "Toggles",
             "name": "toggle",
             "kind": "Grouping",
-            "description": "The category field from the disconnected ToggleTable (e.g. \"On\"/\"Off\") that this switch selects."
+            "description": "One field per toggle, each from its own small On/Off table (e.g. \"On\"/\"Off\", \"True\"/\"False\" or 1/0). Drop a field in and a new empty slot appears below it for the next toggle."
+        },
+        {
+            "displayName": "Group enable",
+            "name": "groupEnable",
+            "kind": "Grouping",
+            "description": "Optional. An On/Off field drawn as a header toggle above the group - switching it Off greys out (disables) every toggle below it without changing their state."
         }
     ],
     "dataViewMappings": [
         {
-            "conditions": [
-                { "toggle": { "max": 1 } }
-            ],
+            "conditions": [{ "toggle": { "max": 12 }, "groupEnable": { "max": 1 } }],
             "categorical": {
                 "categories": {
-                    "for": { "in": "toggle" },
-                    "dataReductionAlgorithm": { "top": { "count": 100 } }
+                    "select": [{ "for": { "in": "groupEnable" } }, { "for": { "in": "toggle" } }],
+                    "dataReductionAlgorithm": { "top": { "count": 10000 } }
                 }
             }
         }
@@ -24,8 +28,36 @@
         "general": {
             "displayName": "General",
             "properties": {
-                "filter": {
-                    "type": { "filter": true }
+                "filter": { "type": { "filter": true } }
+            }
+        },
+        "groupSettings": {
+            "displayName": "Group rules",
+            "properties": {
+                "onlyOneActive": {
+                    "displayName": "Only one active",
+                    "description": "Turning a toggle On turns every other toggle in the group Off.",
+                    "type": { "bool": true }
+                },
+                "masterSwitch": {
+                    "displayName": "Master switch",
+                    "description": "Add a master toggle to the top of the group. Turning it On or Off does the same to every toggle below it.",
+                    "type": { "bool": true }
+                },
+                "masterLabel": {
+                    "displayName": "Master label",
+                    "description": "Name shown next to the master toggle.",
+                    "type": { "text": true }
+                },
+                "indent": {
+                    "displayName": "Indent",
+                    "description": "Pixels each level of toggles is indented below a master or Group enable toggle.",
+                    "type": { "numeric": true }
+                },
+                "rowSpacing": {
+                    "displayName": "Row spacing",
+                    "description": "Space in pixels between toggle rows.",
+                    "type": { "numeric": true }
                 }
             }
         },
@@ -34,58 +66,48 @@
             "properties": {
                 "controlStyle": {
                     "displayName": "Control style",
-                    "description": "Draw the control as a sliding Toggle switch, or a square Checkbox.",
+                    "description": "Draw each toggle as a sliding Toggle switch, a square Checkbox, or a round Radio button.",
                     "type": {
                         "enumeration": [
                             { "displayName": "Toggle", "value": "toggle" },
-                            { "displayName": "Checkbox", "value": "checkbox" }
+                            { "displayName": "Checkbox", "value": "checkbox" },
+                            { "displayName": "Radio", "value": "radio" }
                         ]
                     }
                 },
                 "onColor": {
                     "displayName": "On colour",
-                    "description": "Fill colour of the switch track when it is On.",
+                    "description": "Fill colour of each toggle when it is On.",
                     "type": { "fill": { "solid": { "color": true } } }
                 },
                 "offColor": {
                     "displayName": "Off colour",
-                    "description": "Fill colour of the switch track when it is Off.",
+                    "description": "Fill colour of each toggle when it is Off.",
                     "type": { "fill": { "solid": { "color": true } } }
                 },
                 "onLabel": {
                     "displayName": "On label",
-                    "description": "Text shown next to the switch when it is On.",
+                    "description": "State text shown next to a toggle when it is On.",
                     "type": { "text": true }
                 },
                 "offLabel": {
                     "displayName": "Off label",
-                    "description": "Text shown next to the switch when it is Off.",
+                    "description": "State text shown next to a toggle when it is Off.",
                     "type": { "text": true }
                 },
                 "showLabels": {
                     "displayName": "Show labels",
-                    "description": "Show the On/Off label text next to the switch when there's room for it. Turn off to always hide it.",
+                    "description": "Show On/Off state text next to each toggle when there's room for it. Turn off to always hide it.",
                     "type": { "bool": true }
                 },
                 "labelPosition": {
                     "displayName": "Label position",
-                    "description": "Show a single label matching the current state, to the left or right of the switch (Label left / Label right), or centred above it (Above).",
+                    "description": "Show the current state's text to the left or right of each toggle (Label left / Label right), or centred above it (Above).",
                     "type": {
                         "enumeration": [
                             { "displayName": "Label left", "value": "inline-left" },
                             { "displayName": "Label right", "value": "inline-right" },
                             { "displayName": "Above", "value": "above" }
-                        ]
-                    }
-                },
-                "alignment": {
-                    "displayName": "Alignment",
-                    "description": "Position of the switch+label row within the tile: hugging the left edge, hugging the right edge, or Justify (spread the label and switch to opposite ends).",
-                    "type": {
-                        "enumeration": [
-                            { "displayName": "Left", "value": "left" },
-                            { "displayName": "Right", "value": "right" },
-                            { "displayName": "Justify", "value": "justify" }
                         ]
                     }
                 },
@@ -121,35 +143,146 @@
                     "description": "Colour of the On/Off label text.",
                     "type": { "fill": { "solid": { "color": true } } }
                 },
-                "showBackground": {
-                    "displayName": "Show switch background",
-                    "description": "Fill a background behind the switch and its label(s). Off by default so the visual shows through the report's own card/canvas background. Separate from Power BI's own native General → Background, which every visual gets automatically - turning this off won't affect that one.",
-                    "type": { "bool": true }
-                },
-                "backgroundColor": {
-                    "displayName": "Switch background colour",
-                    "description": "Fill colour behind the switch and its label(s), shown when Show switch background is on.",
-                    "type": { "fill": { "solid": { "color": true } } }
-                },
                 "showBorder": {
                     "displayName": "Show border",
-                    "description": "Show a coloured border around the switch track. Off by default.",
+                    "description": "Show a coloured border around each toggle's track. Off by default.",
                     "type": { "bool": true }
                 },
                 "borderColor": {
                     "displayName": "Border colour",
-                    "description": "Colour of the switch track's border, shown when Show border is on.",
+                    "description": "Colour of each toggle track's border, shown when Show border is on.",
                     "type": { "fill": { "solid": { "color": true } } }
                 },
                 "borderWidth": {
                     "displayName": "Border width",
-                    "description": "Width in pixels of the switch track's border, shown when Show border is on.",
+                    "description": "Width in pixels of each toggle track's border, shown when Show border is on.",
                     "type": { "numeric": true }
                 },
                 "depthEffect": {
                     "displayName": "Make it fancy!",
-                    "description": "Give the switch a raised, glossy look with shading and shadows instead of a flat fill.",
+                    "description": "Give every toggle a raised, glossy look with shading and shadows instead of a flat fill.",
                     "type": { "bool": true }
+                }
+            }
+        },
+        "nameSettings": {
+            "displayName": "Toggle names",
+            "properties": {
+                "show": {
+                    "displayName": "Show names",
+                    "description": "Show each toggle's name (its field name - rename it in the field well to change it).",
+                    "type": { "bool": true }
+                },
+                "position": {
+                    "displayName": "Name position",
+                    "description": "Show each name to the left or right of its toggle.",
+                    "type": {
+                        "enumeration": [
+                            { "displayName": "Left", "value": "left" },
+                            { "displayName": "Right", "value": "right" }
+                        ]
+                    }
+                },
+                "alignment": {
+                    "displayName": "Alignment",
+                    "description": "Pack names and toggles to the Left or Right, or Justify them to opposite edges of the group.",
+                    "type": {
+                        "enumeration": [
+                            { "displayName": "Left", "value": "left" },
+                            { "displayName": "Right", "value": "right" },
+                            { "displayName": "Justify", "value": "justify" }
+                        ]
+                    }
+                },
+                "spacing": {
+                    "displayName": "Name spacing",
+                    "description": "Space in pixels between each name and its toggle.",
+                    "type": { "numeric": true }
+                },
+                "nameFontFamily": {
+                    "displayName": "Font family",
+                    "description": "Font of the toggle names.",
+                    "type": { "formatting": { "fontFamily": true } }
+                },
+                "nameFontSize": {
+                    "displayName": "Font size",
+                    "description": "Size in pixels of the toggle names.",
+                    "type": { "formatting": { "fontSize": true } }
+                },
+                "nameFontBold": {
+                    "displayName": "Bold",
+                    "type": { "bool": true }
+                },
+                "nameFontItalic": {
+                    "displayName": "Italic",
+                    "type": { "bool": true }
+                },
+                "nameFontUnderline": {
+                    "displayName": "Underline",
+                    "type": { "bool": true }
+                },
+                "fontColor": {
+                    "displayName": "Font colour",
+                    "description": "Colour of the toggle names.",
+                    "type": { "fill": { "solid": { "color": true } } }
+                }
+            }
+        },
+        "containerSettings": {
+            "displayName": "Container",
+            "properties": {
+                "borderStyle": {
+                    "displayName": "Border style",
+                    "description": "Border drawn around the whole group: None, Flat (a plain line), Embossed (raised) or Gutter (recessed).",
+                    "type": {
+                        "enumeration": [
+                            { "displayName": "None", "value": "none" },
+                            { "displayName": "Flat", "value": "flat" },
+                            { "displayName": "Embossed", "value": "embossed" },
+                            { "displayName": "Gutter", "value": "gutter" }
+                        ]
+                    }
+                },
+                "borderColor": {
+                    "displayName": "Border colour",
+                    "description": "Colour of the group's border.",
+                    "type": { "fill": { "solid": { "color": true } } }
+                },
+                "borderWidth": {
+                    "displayName": "Border width",
+                    "description": "Width in pixels of the group's border.",
+                    "type": { "numeric": true }
+                },
+                "cornerRadius": {
+                    "displayName": "Corner radius",
+                    "description": "Roundness in pixels of the group's corners.",
+                    "type": { "numeric": true }
+                },
+                "padding": {
+                    "displayName": "Padding",
+                    "description": "Space in pixels between the group's border and its contents.",
+                    "type": { "numeric": true }
+                },
+                "verticalAlignment": {
+                    "displayName": "Vertical alignment",
+                    "description": "Where the title and toggles sit vertically inside the container.",
+                    "type": {
+                        "enumeration": [
+                            { "displayName": "Top", "value": "top" },
+                            { "displayName": "Middle", "value": "middle" },
+                            { "displayName": "Bottom", "value": "bottom" }
+                        ]
+                    }
+                },
+                "showBackground": {
+                    "displayName": "Show group background",
+                    "description": "Fill a background inside the group's container. Off by default so the visual shows through the report's own card/canvas background. Separate from Power BI's own native General → Background.",
+                    "type": { "bool": true }
+                },
+                "backgroundColor": {
+                    "displayName": "Group background colour",
+                    "description": "Fill colour inside the group's container, shown when Show group background is on.",
+                    "type": { "fill": { "solid": { "color": true } } }
                 }
             }
         },
@@ -158,12 +291,12 @@
             "properties": {
                 "text": {
                     "displayName": "Title text",
-                    "description": "Static heading text this visual renders itself, positioned beside or above the switch. Leave blank to show no title.",
+                    "description": "Static heading text this visual renders itself, above or beside the group. Leave blank to show no title.",
                     "type": { "text": true }
                 },
                 "position": {
                     "displayName": "Title position",
-                    "description": "Show the title before the switch (Inline left), after it (Inline right), or centred above it (Above).",
+                    "description": "Show the title before the group (Inline left), after it (Inline right), or above it (Above).",
                     "type": {
                         "enumeration": [
                             { "displayName": "Inline left", "value": "inline-left" },
@@ -174,7 +307,7 @@
                 },
                 "alignment": {
                     "displayName": "Alignment",
-                    "description": "Position of the title+switch group within the tile: hugging the left edge, hugging the right edge, or Justify (spread the title and switch to opposite ends).",
+                    "description": "Position of the title+group assembly within the container: Left, Right, or Justify (spread the title and group to opposite ends).",
                     "type": {
                         "enumeration": [
                             { "displayName": "Left", "value": "left" },
@@ -185,7 +318,7 @@
                 },
                 "spacing": {
                     "displayName": "Title spacing",
-                    "description": "Space in pixels between the switch and the title.",
+                    "description": "Space in pixels between the title and the group.",
                     "type": { "numeric": true }
                 },
                 "titleFontFamily": {
@@ -222,7 +355,7 @@
             "properties": {
                 "mode": {
                     "displayName": "Size mode",
-                    "description": "Scale the switch fluidly between Min/Max height as the tile is resized (Responsive), or lock it to one Fixed height regardless of tile size.",
+                    "description": "Scale the toggles fluidly with the tile's height and number of rows, between Min/Max height (Responsive), or lock them to one Fixed height.",
                     "type": {
                         "enumeration": [
                             { "displayName": "Responsive", "value": "responsive" },
@@ -248,12 +381,11 @@
             }
         }
     },
-    "tooltips": {
-        "supportedTypes": {
-            "default": false
-        }
-    },
+    "tooltips": { "supportedTypes": { "default": false } },
     "supportsKeyboardFocus": true,
+    "supportsSynchronizingFilterState": true,
     "supportsLandingPage": true,
-    "privileges": []
+    "privileges": [
+
+    ]
 }
