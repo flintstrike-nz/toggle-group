@@ -852,10 +852,13 @@ export class Visual implements IVisual {
             this.lastStaleCleanup = "";
             return;
         }
-        if (staleKeys === this.lastStaleCleanup || !this.interactionsAllowed()) {
+        // Keyed on the bound set too: if the group itself changes (a field added or removed)
+        // while the same stale filter lingers, that's a different write, so it's retried.
+        const attemptKey = `${staleKeys}\u0002${Array.from(boundKeys).sort().join("\u0001")}`;
+        if (attemptKey === this.lastStaleCleanup || !this.interactionsAllowed()) {
             return;
         }
-        this.lastStaleCleanup = staleKeys;
+        this.lastStaleCleanup = attemptKey;
         if (this.items.length === 0) {
             // Nothing bound to write a replacement set for - clear the property outright.
             this.host.applyJsonFilter(null, "general", "filter", powerbi.FilterAction.remove);
@@ -1307,18 +1310,17 @@ export class Visual implements IVisual {
 
         // The aria-label always names the row and both states regardless of showLabels/names, since
         // hidden visible text makes the accessible name more important, not less. Names and label
-        // text are arbitrary report-author input, so a function replacer is used instead of a
-        // replacement-string literal - String.prototype.replace would otherwise interpret
-        // sequences like "$&" or "$1" inside that text as special patterns.
+        // text are arbitrary report-author input, so every token is substituted in a single pass
+        // (text inserted for one token is never re-scanned, so a name containing "{2}" stays
+        // verbatim), through a function replacer rather than a replacement-string literal -
+        // String.prototype.replace would otherwise interpret "$&" or "$1" in that text as patterns.
         const currentLabel = isMixed
             ? this.localizationManager.getDisplayName("Visual_State_Mixed")
             : isOn ? card.onLabel.value : card.offLabel.value;
+        const tokens = [item.name, card.offLabel.value, card.onLabel.value, currentLabel];
         const ariaLabelKey = role === "switch" ? "Visual_Switch_AriaLabel" : role === "radio" ? "Visual_Radio_AriaLabel" : "Visual_Checkbox_AriaLabel";
         const ariaLabel = this.localizationManager.getDisplayName(ariaLabelKey)
-            .replace(/\{0\}/g, () => item.name)
-            .replace(/\{1\}/g, () => card.offLabel.value)
-            .replace(/\{2\}/g, () => card.onLabel.value)
-            .replace(/\{3\}/g, () => currentLabel);
+            .replace(/\{([0-3])\}/g, (_token, n: string) => tokens[Number(n)]);
         switchEl.setAttribute("aria-label", ariaLabel);
     }
 

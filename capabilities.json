@@ -365,17 +365,17 @@
                 },
                 "minHeight": {
                     "displayName": "Min height",
-                    "description": "Smallest height in pixels the switch scales down to in Responsive mode. Width follows at a fixed 2:1 ratio.",
+                    "description": "Smallest height in pixels each toggle scales down to in Responsive mode. Width follows at a fixed ratio (2:1 toggle, 1:1 checkbox/radio).",
                     "type": { "numeric": true }
                 },
                 "maxHeight": {
                     "displayName": "Max height",
-                    "description": "Largest height in pixels the switch scales up to in Responsive mode. Width follows at a fixed 2:1 ratio.",
+                    "description": "Largest height in pixels each toggle scales up to in Responsive mode. Width follows at a fixed ratio (2:1 toggle, 1:1 checkbox/radio).",
                     "type": { "numeric": true }
                 },
                 "fixedHeight": {
                     "displayName": "Fixed height",
-                    "description": "Exact height in pixels the switch is drawn at in Fixed mode, regardless of tile size. Width follows at a fixed 2:1 ratio.",
+                    "description": "Exact height in pixels each toggle is drawn at in Fixed mode, regardless of tile size. Width follows at a fixed ratio (2:1 toggle, 1:1 checkbox/radio).",
                     "type": { "numeric": true }
                 }
             }
