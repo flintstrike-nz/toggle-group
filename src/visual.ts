@@ -714,10 +714,14 @@ export class Visual implements IVisual {
         });
 
         const distinct = Array.from(firstIndexByValue.keys());
+        // Two *raw* values too, not just two after normalizing: a column holding "On", "ON" and
+        // "Off" would otherwise pass, yet the filter can only name one raw On value, so rows
+        // holding the other On variant would silently count as Off.
+        const rawDistinctCount = new Set(column.values.map((value) => String(value))).size;
         const onKey = distinct.find((value) => ON_VALUES.has(value));
         const offKey = distinct.find((value) => OFF_VALUES.has(value));
         const target = this.getFilterTarget(column.source);
-        if (distinct.length !== 2 || onKey === undefined || offKey === undefined || !target.table || !target.column) {
+        if (distinct.length !== 2 || rawDistinctCount !== 2 || onKey === undefined || offKey === undefined || !target.table || !target.column) {
             return undefined;
         }
 
