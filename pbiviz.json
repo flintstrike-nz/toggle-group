@@ -1,0 +1,28 @@
+{
+    "visual":  {
+                   "name":  "toggleSlicerVisual",
+                   "displayName":  "Toggle Slicer",
+                   "guid":  "toggleSlicerVisual",
+                   "visualClassName":  "Visual",
+                   "version":  "1.0.0.12",
+                   "description":  "A two-state on/off toggle switch that drives a disconnected-table slicer selection.",
+                   "supportUrl":  "https://github.com/hayden-flintoft/toggle-slicer-visual/issues",
+                   "gitHubUrl":  "https://github.com/hayden-flintoft/toggle-slicer-visual"
+               },
+    "apiVersion":  "5.11.1",
+    "author":  {
+                   "name":  "Hayden Flintoft",
+                   "email":  "hflintoft86@gmail.com"
+               },
+    "assets":  {
+                   "icon":  "assets/icon.png"
+               },
+    "externalJS":  [
+
+                   ],
+    "style":  "style/visual.less",
+    "capabilities":  "capabilities.json",
+    "stringResources":  [
+                            "stringResources/en-US/resources.resjson"
+                        ]
+}

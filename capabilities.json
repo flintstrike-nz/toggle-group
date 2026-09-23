@@ -1,0 +1,259 @@
+{
+    "dataRoles": [
+        {
+            "displayName": "Toggle",
+            "name": "toggle",
+            "kind": "Grouping",
+            "description": "The category field from the disconnected ToggleTable (e.g. \"On\"/\"Off\") that this switch selects."
+        }
+    ],
+    "dataViewMappings": [
+        {
+            "conditions": [
+                { "toggle": { "max": 1 } }
+            ],
+            "categorical": {
+                "categories": {
+                    "for": { "in": "toggle" },
+                    "dataReductionAlgorithm": { "top": { "count": 100 } }
+                }
+            }
+        }
+    ],
+    "objects": {
+        "general": {
+            "displayName": "General",
+            "properties": {
+                "filter": {
+                    "type": { "filter": true }
+                }
+            }
+        },
+        "toggleSettings": {
+            "displayName": "Toggle Settings",
+            "properties": {
+                "controlStyle": {
+                    "displayName": "Control style",
+                    "description": "Draw the control as a sliding Toggle switch, or a square Checkbox.",
+                    "type": {
+                        "enumeration": [
+                            { "displayName": "Toggle", "value": "toggle" },
+                            { "displayName": "Checkbox", "value": "checkbox" }
+                        ]
+                    }
+                },
+                "onColor": {
+                    "displayName": "On colour",
+                    "description": "Fill colour of the switch track when it is On.",
+                    "type": { "fill": { "solid": { "color": true } } }
+                },
+                "offColor": {
+                    "displayName": "Off colour",
+                    "description": "Fill colour of the switch track when it is Off.",
+                    "type": { "fill": { "solid": { "color": true } } }
+                },
+                "onLabel": {
+                    "displayName": "On label",
+                    "description": "Text shown next to the switch when it is On.",
+                    "type": { "text": true }
+                },
+                "offLabel": {
+                    "displayName": "Off label",
+                    "description": "Text shown next to the switch when it is Off.",
+                    "type": { "text": true }
+                },
+                "showLabels": {
+                    "displayName": "Show labels",
+                    "description": "Show the On/Off label text next to the switch when there's room for it. Turn off to always hide it.",
+                    "type": { "bool": true }
+                },
+                "labelPosition": {
+                    "displayName": "Label position",
+                    "description": "Show a single label matching the current state, to the left or right of the switch (Label left / Label right), or centred above it (Above).",
+                    "type": {
+                        "enumeration": [
+                            { "displayName": "Label left", "value": "inline-left" },
+                            { "displayName": "Label right", "value": "inline-right" },
+                            { "displayName": "Above", "value": "above" }
+                        ]
+                    }
+                },
+                "alignment": {
+                    "displayName": "Alignment",
+                    "description": "Position of the switch+label row within the tile: hugging the left edge, hugging the right edge, or Justify (spread the label and switch to opposite ends).",
+                    "type": {
+                        "enumeration": [
+                            { "displayName": "Left", "value": "left" },
+                            { "displayName": "Right", "value": "right" },
+                            { "displayName": "Justify", "value": "justify" }
+                        ]
+                    }
+                },
+                "labelSpacing": {
+                    "displayName": "Label spacing",
+                    "description": "Space in pixels between the switch and its label(s).",
+                    "type": { "numeric": true }
+                },
+                "labelFontFamily": {
+                    "displayName": "Font family",
+                    "description": "Font of the On/Off label text.",
+                    "type": { "formatting": { "fontFamily": true } }
+                },
+                "labelFontSize": {
+                    "displayName": "Font size",
+                    "description": "Size in pixels of the On/Off label text.",
+                    "type": { "formatting": { "fontSize": true } }
+                },
+                "labelFontBold": {
+                    "displayName": "Bold",
+                    "type": { "bool": true }
+                },
+                "labelFontItalic": {
+                    "displayName": "Italic",
+                    "type": { "bool": true }
+                },
+                "labelFontUnderline": {
+                    "displayName": "Underline",
+                    "type": { "bool": true }
+                },
+                "labelFontColor": {
+                    "displayName": "Font colour",
+                    "description": "Colour of the On/Off label text.",
+                    "type": { "fill": { "solid": { "color": true } } }
+                },
+                "showBackground": {
+                    "displayName": "Show switch background",
+                    "description": "Fill a background behind the switch and its label(s). Off by default so the visual shows through the report's own card/canvas background. Separate from Power BI's own native General → Background, which every visual gets automatically - turning this off won't affect that one.",
+                    "type": { "bool": true }
+                },
+                "backgroundColor": {
+                    "displayName": "Switch background colour",
+                    "description": "Fill colour behind the switch and its label(s), shown when Show switch background is on.",
+                    "type": { "fill": { "solid": { "color": true } } }
+                },
+                "showBorder": {
+                    "displayName": "Show border",
+                    "description": "Show a coloured border around the switch track. Off by default.",
+                    "type": { "bool": true }
+                },
+                "borderColor": {
+                    "displayName": "Border colour",
+                    "description": "Colour of the switch track's border, shown when Show border is on.",
+                    "type": { "fill": { "solid": { "color": true } } }
+                },
+                "borderWidth": {
+                    "displayName": "Border width",
+                    "description": "Width in pixels of the switch track's border, shown when Show border is on.",
+                    "type": { "numeric": true }
+                },
+                "depthEffect": {
+                    "displayName": "Make it fancy!",
+                    "description": "Give the switch a raised, glossy look with shading and shadows instead of a flat fill.",
+                    "type": { "bool": true }
+                }
+            }
+        },
+        "titleSettings": {
+            "displayName": "Title",
+            "properties": {
+                "text": {
+                    "displayName": "Title text",
+                    "description": "Static heading text this visual renders itself, positioned beside or above the switch. Leave blank to show no title.",
+                    "type": { "text": true }
+                },
+                "position": {
+                    "displayName": "Title position",
+                    "description": "Show the title before the switch (Inline left), after it (Inline right), or centred above it (Above).",
+                    "type": {
+                        "enumeration": [
+                            { "displayName": "Inline left", "value": "inline-left" },
+                            { "displayName": "Inline right", "value": "inline-right" },
+                            { "displayName": "Above", "value": "above" }
+                        ]
+                    }
+                },
+                "alignment": {
+                    "displayName": "Alignment",
+                    "description": "Position of the title+switch group within the tile: hugging the left edge, hugging the right edge, or Justify (spread the title and switch to opposite ends).",
+                    "type": {
+                        "enumeration": [
+                            { "displayName": "Left", "value": "left" },
+                            { "displayName": "Right", "value": "right" },
+                            { "displayName": "Justify", "value": "justify" }
+                        ]
+                    }
+                },
+                "spacing": {
+                    "displayName": "Title spacing",
+                    "description": "Space in pixels between the switch and the title.",
+                    "type": { "numeric": true }
+                },
+                "titleFontFamily": {
+                    "displayName": "Font family",
+                    "description": "Font of the title text.",
+                    "type": { "formatting": { "fontFamily": true } }
+                },
+                "titleFontSize": {
+                    "displayName": "Font size",
+                    "description": "Size in pixels of the title text.",
+                    "type": { "formatting": { "fontSize": true } }
+                },
+                "titleFontBold": {
+                    "displayName": "Bold",
+                    "type": { "bool": true }
+                },
+                "titleFontItalic": {
+                    "displayName": "Italic",
+                    "type": { "bool": true }
+                },
+                "titleFontUnderline": {
+                    "displayName": "Underline",
+                    "type": { "bool": true }
+                },
+                "fontColor": {
+                    "displayName": "Font colour",
+                    "description": "Colour of the title text.",
+                    "type": { "fill": { "solid": { "color": true } } }
+                }
+            }
+        },
+        "sizeSettings": {
+            "displayName": "Size",
+            "properties": {
+                "mode": {
+                    "displayName": "Size mode",
+                    "description": "Scale the switch fluidly between Min/Max height as the tile is resized (Responsive), or lock it to one Fixed height regardless of tile size.",
+                    "type": {
+                        "enumeration": [
+                            { "displayName": "Responsive", "value": "responsive" },
+                            { "displayName": "Fixed", "value": "fixed" }
+                        ]
+                    }
+                },
+                "minHeight": {
+                    "displayName": "Min height",
+                    "description": "Smallest height in pixels the switch scales down to in Responsive mode. Width follows at a fixed 2:1 ratio.",
+                    "type": { "numeric": true }
+                },
+                "maxHeight": {
+                    "displayName": "Max height",
+                    "description": "Largest height in pixels the switch scales up to in Responsive mode. Width follows at a fixed 2:1 ratio.",
+                    "type": { "numeric": true }
+                },
+                "fixedHeight": {
+                    "displayName": "Fixed height",
+                    "description": "Exact height in pixels the switch is drawn at in Fixed mode, regardless of tile size. Width follows at a fixed 2:1 ratio.",
+                    "type": { "numeric": true }
+                }
+            }
+        }
+    },
+    "tooltips": {
+        "supportedTypes": {
+            "default": false
+        }
+    },
+    "supportsKeyboardFocus": true,
+    "supportsLandingPage": true,
+    "privileges": []
+}

@@ -1,0 +1,585 @@
+/*
+ *  Power BI Visualizations
+ *
+ *  Copyright (c) Microsoft Corporation
+ *  All rights reserved.
+ *  MIT License
+ *
+ *  Permission is hereby granted, free of charge, to any person obtaining a copy
+ *  of this software and associated documentation files (the ""Software""), to deal
+ *  in the Software without restriction, including without limitation the rights
+ *  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ *  copies of the Software, and to permit persons to whom the Software is
+ *  furnished to do so, subject to the following conditions:
+ *
+ *  The above copyright notice and this permission notice shall be included in
+ *  all copies or substantial portions of the Software.
+ *
+ *  THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ *  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ *  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ *  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ *  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ *  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ *  THE SOFTWARE.
+ */
+
+.toggle-slicer-visual {
+    container-type: size;
+    container-name: toggle-slicer;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    font-family: "Segoe UI", wf_segoe-ui_normal, helvetica, arial, sans-serif;
+}
+
+// Wraps the title (a static heading this visual draws itself, separate from Power BI's own native
+// visual title) around the switch/label container, so the title can sit beside it (Inline) or
+// above it (Above) - the same scheme .toggle-slicer uses for its own on/off labels, just one level
+// out, since the title never changes with the switch's state.
+.toggle-slicer-wrap {
+    display: flex;
+    align-items: center;
+    gap: var(--toggle-title-gap, 8px);
+
+    &--stacked {
+        flex-direction: column;
+    }
+
+    // "Inline right" (titleSettings.position) - titleEl already comes before the switch/label
+    // container in DOM order by default ("Inline left"), so only the "right" variant needs an order
+    // override to swap sides; "Above" (--stacked) always keeps the title first/top regardless.
+    &--inline-right {
+        .toggle-slicer__title {
+            order: 1;
+        }
+    }
+
+    // titleSettings.alignment - positions titleWrapEl itself within the tile via cross/main-axis auto
+    // margins (per the flexbox spec, a non-zero auto margin on an axis overrides that axis's
+    // justify-content/align-items for this item alone) rather than changing "toggle-slicer-visual"'s
+    // own justify-content, since that root element is also the parent of the unrelated landing-page/
+    // validation-message sections and touching its justify-content there would misalign whichever of
+    // those happens to be showing instead. "Justify" stretches titleWrapEl to the tile's full size so
+    // its own justify-content: space-between has room to spread its two children (the title, and the
+    // switch+label group) to opposite ends - horizontally when position is Inline (row), vertically
+    // when position is Above (column), since that's whichever axis is titleWrapEl's main axis.
+    &.is-title-align-left {
+        margin-right: auto;
+    }
+
+    &.is-title-align-right {
+        margin-left: auto;
+    }
+
+    &.is-title-align-justify {
+        width: 100%;
+        height: 100%;
+        justify-content: space-between;
+    }
+}
+
+.toggle-slicer__title {
+    font-family: var(--toggle-title-font-family, "Segoe UI", wf_segoe-ui_normal, helvetica, arial, sans-serif);
+    font-size: var(--toggle-title-font-size, 14px);
+    font-weight: var(--toggle-title-font-weight, 600);
+    font-style: var(--toggle-title-font-style, normal);
+    text-decoration: var(--toggle-title-text-decoration, none);
+    color: var(--toggle-title-font-color, #605e5c);
+    user-select: none;
+    text-align: center;
+}
+
+.toggle-slicer {
+    display: flex;
+    align-items: center;
+    gap: var(--toggle-label-gap, 8px);
+
+    // All three labelPosition values now show only the label matching the current state (see
+    // render()) - both label spans stay in the DOM either way, so each variant below only needs an
+    // order override so whichever one is visible renders on the correct side/above the switch,
+    // regardless of its normal DOM position (the "on" label otherwise comes after the switch in
+    // markup).
+    &--stacked {
+        flex-direction: column;
+        // Stretches this row to fill titleWrapEl's own width, so is-align-left/right below always has
+        // spare space to move within independently of titleSettings.alignment - the usual reason to
+        // set labelPosition to Above is precisely to get a row that can be aligned under a (possibly
+        // wider) title, and that shouldn't also require setting the title's own alignment.
+        align-self: stretch;
+
+        .toggle-slicer__label {
+            order: -1;
+            text-align: center;
+        }
+
+        .toggle-slicer__switch {
+            order: 0;
+        }
+
+        // Scoped to --stacked only - see the unscoped is-align-left/right comment below for why.
+        &.is-align-left {
+            margin-right: auto;
+        }
+
+        &.is-align-right {
+            margin-left: auto;
+        }
+    }
+
+    &--inline-left {
+        .toggle-slicer__label {
+            order: -1;
+            text-align: right;
+        }
+
+        .toggle-slicer__switch {
+            order: 0;
+        }
+    }
+
+    &--inline-right {
+        .toggle-slicer__label {
+            order: 1;
+            text-align: left;
+        }
+
+        .toggle-slicer__switch {
+            order: 0;
+        }
+    }
+
+    // toggleSettings.alignment: left/right only take effect within --stacked (see above), not here -
+    // outside --stacked this row shares titleWrapEl's own row with the title (labelPosition
+    // inline-left/inline-right), and an auto margin here would consume free space *before*
+    // titleSettings.alignment: justify's own space-between gets a chance to use it, silently
+    // preventing the far more common "just set the title's alignment to Justify" case from spreading
+    // the title and switch apart at all. "Justify" is left unscoped since flex-grow doesn't have that
+    // problem - it just has nothing to grow *into* unless this row's container is wider than its
+    // shrink-wrapped content, i.e. unless labelPosition is Above (--stacked's own align-self: stretch)
+    // or titleSettings.alignment is also Justify (titleWrapEl stretched to the tile's full size);
+    // outside both, this is a harmless no-op rather than a silent bug for the same reason left/right
+    // needed scoping above.
+    &.is-align-justify {
+        flex: 1 1 auto;
+        justify-content: space-between;
+    }
+}
+
+.toggle-slicer__label {
+    font-family: var(--toggle-label-font-family, "Segoe UI", wf_segoe-ui_normal, helvetica, arial, sans-serif);
+    font-size: var(--toggle-label-font-size, 12px);
+    font-weight: var(--toggle-label-font-weight, normal);
+    font-style: var(--toggle-label-font-style, normal);
+    text-decoration: var(--toggle-label-text-decoration, none);
+    color: var(--toggle-label-font-color, #605e5c);
+    user-select: none;
+
+    &--off {
+        text-align: right;
+    }
+
+    &--on {
+        text-align: left;
+    }
+}
+
+.toggle-slicer__switch {
+    // Height-driven sizing: width always follows at a fixed 2:1 ratio (44x22's own ratio), so a
+    // report author only ever sets one dimension - see Size settings in settings.ts. In Responsive
+    // mode (the default), height scales fluidly with the visual's own height (the "toggle-slicer"
+    // container's cqh unit) between --toggle-min-height/--toggle-max-height, clamping at either end
+    // rather than growing or shrinking without bound; --toggle-min-height/--toggle-max-height/
+    // --toggle-fixed-height themselves are set on the root element in applySize(), so they inherit
+    // down to here. This custom property is deliberately declared here rather than on the root
+    // "toggle-slicer-visual" element itself - a size container's cqh/cqw units resolve to 0 on the
+    // container element itself (a container can't query its own size), so it has to live on a
+    // descendant instead. is-size-fixed (Fixed mode) overrides it to a single literal height below.
+    --toggle-track-height: clamp(var(--toggle-min-height, 16px), 50cqh, var(--toggle-max-height, 22px));
+    --toggle-track-width: calc(var(--toggle-track-height) * 2);
+    // Border width (borderWidth, 0-6px) and height (minHeight/fixedHeight, 8-200px) are independent
+    // report-author settings, so a large border paired with a short switch could otherwise collapse
+    // the knob to zero or negative size - e.g. an 8px-tall switch with a 6px border leaves height -
+    // 2*border = -4px. Capping the border actually used in layout at just under half the current
+    // track height (whatever that resolves to - Responsive's fluid value or Fixed's literal one)
+    // guarantees a knob at least 2px across no matter what combination is chosen, without needing to
+    // restrict the two settings' own ranges against each other.
+    --toggle-effective-border-width: min(var(--toggle-border-width, 2px), calc(var(--toggle-track-height) / 2 - 1px));
+
+    position: relative;
+    width: var(--toggle-track-width);
+    height: var(--toggle-track-height);
+    flex: 0 0 auto;
+    cursor: pointer;
+    outline: none;
+    border-radius: 999px;
+
+    &.is-size-fixed {
+        --toggle-track-height: var(--toggle-fixed-height, 22px);
+    }
+
+    // A shadow only, no lift/movement - the switch stays put on hover.
+    &:hover:not(.is-readonly) {
+        filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.25));
+    }
+
+    &:focus-visible {
+        box-shadow: 0 0 0 2px rgba(96, 94, 92, 0.4);
+    }
+
+    &.is-readonly {
+        cursor: default;
+        opacity: 0.7;
+    }
+
+    // Checkbox skin: same track/knob elements as the toggle skin (so colour, border and the
+    // is-depth "fancy" treatment below all apply unchanged), just square instead of pill-shaped and
+    // with no sliding knob to make room for.
+    &.is-checkbox {
+        width: var(--toggle-track-height);
+    }
+}
+
+.toggle-slicer__track {
+    position: absolute;
+    inset: 0;
+    box-sizing: border-box;
+    border-radius: 999px;
+    border: var(--toggle-effective-border-width, 2px) solid var(--toggle-track-border-color, transparent);
+    background-color: var(--toggle-off-color, #b0b3b8);
+    transition: background-color 0.15s ease-in-out, border-color 0.15s ease-in-out;
+}
+
+.toggle-slicer__switch.is-on .toggle-slicer__track {
+    background-color: var(--toggle-on-color, #2ecc71);
+    border-color: var(--toggle-track-border-color-on, transparent);
+}
+
+// "3D depth" option: a sheen gradient plus an inset shadow gives the track a recessed, glossy
+// groove instead of a flat fill. Uses plain rgba layers rather than color-mix() (which needs a
+// newer Chromium than some managed WebView2/Edge installs ship) so it works over whatever solid
+// on/off colour is already set, without needing to know that colour's hue.
+.toggle-slicer__switch.is-depth .toggle-slicer__track {
+    background-image: linear-gradient(to bottom, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0) 40%, rgba(0, 0, 0, 0.15));
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35), inset 0 -1px 0 rgba(255, 255, 255, 0.15);
+}
+
+.toggle-slicer__knob {
+    // The knob's containing block is the track's padding box, which is already inset by the
+    // track's own border - offsetting top/left here would double-count that border, pushing the
+    // knob past the track's actual centre (flush with the bottom/right edge instead of centred).
+    // 0/0 sits it exactly inside the border on every side. Size is derived from the track's own
+    // (possibly Responsive/fluid, possibly Fixed) height minus the *effective* border width (see
+    // --toggle-effective-border-width above, capped below half the track height) via calc(), so the
+    // knob stays centred, at least 2px across, and the border stays visible as an even ring around
+    // it - at any height or border width, including combinations too extreme for the raw border
+    // width to fit; the "on" translateX below needs no such border adjustment since the border
+    // terms cancel out algebraically - (trackWidth - 2b) - (trackHeight - 2b) = trackWidth -
+    // trackHeight regardless of b - and no height adjustment beyond referencing the same variables,
+    // since it was always just that difference regardless of the switch's overall size.
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: calc(var(--toggle-track-height) - 2 * var(--toggle-effective-border-width, 2px));
+    height: calc(var(--toggle-track-height) - 2 * var(--toggle-effective-border-width, 2px));
+    border-radius: 50%;
+    background-color: var(--toggle-knob-color, #ffffff);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+    transition: transform 0.15s ease-in-out, background-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.toggle-slicer__switch.is-on .toggle-slicer__knob {
+    background-color: var(--toggle-knob-color-on, #ffffff);
+    transform: translateX(calc(var(--toggle-track-width) - var(--toggle-track-height)));
+}
+
+// "3D depth" option, knob half: a sheen gradient plus a stronger drop shadow makes it look like a
+// raised, glossy button rather than a flat disc, with the shadow lifting further on hover to match
+// the switch-level hover lift above.
+.toggle-slicer__switch.is-depth .toggle-slicer__knob {
+    background-image: linear-gradient(to bottom, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0) 40%, rgba(0, 0, 0, 0.08));
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.35), 0 1px 1px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+.toggle-slicer__switch.is-depth:hover:not(.is-readonly) .toggle-slicer__knob {
+    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+// Checkbox skin's track: a rounded square (scaled off the same --toggle-track-height as the toggle
+// skin, so it stays proportional at any Size setting) instead of a pill, with the sliding knob
+// hidden - background-color/border/is-depth gradient all still come from the same rules above,
+// since they target .toggle-slicer__track generically rather than anything toggle-specific.
+.toggle-slicer__switch.is-checkbox .toggle-slicer__track {
+    border-radius: calc(var(--toggle-track-height) * 0.2);
+}
+
+.toggle-slicer__switch.is-checkbox .toggle-slicer__knob {
+    display: none;
+}
+
+// Checkbox skin's "on" mark. Hidden entirely outside is-checkbox (including for the toggle skin,
+// where the element still exists in the DOM - see checkmarkEl in visual.ts); faded/scaled in and
+// out with is-on the same way the toggle skin's knob slides, rather than an abrupt show/hide.
+.toggle-slicer__checkmark {
+    display: none;
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    width: 60%;
+    height: 60%;
+    color: var(--toggle-knob-color-on, #ffffff);
+    opacity: 0;
+    transform: scale(0.5);
+    transition: opacity 0.15s ease-in-out, transform 0.15s ease-in-out;
+    pointer-events: none;
+}
+
+.toggle-slicer__switch.is-checkbox .toggle-slicer__checkmark {
+    display: block;
+}
+
+.toggle-slicer__switch.is-checkbox.is-on .toggle-slicer__checkmark {
+    opacity: 1;
+    transform: scale(1);
+}
+
+// "3D depth" option, checkbox skin: a drop shadow under the checkmark itself, echoing the extra
+// shadow layers is-depth already adds to the toggle skin's knob.
+.toggle-slicer__switch.is-depth.is-checkbox .toggle-slicer__checkmark {
+    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.35));
+}
+
+.toggle-slicer__message {
+    display: none;
+    font-size: 12px;
+    color: var(--toggle-label-color, #605e5c);
+    text-align: center;
+    padding: 8px;
+}
+
+// "No field bound" placeholder: icon + heading (mirrors the host's own generic empty-state), a
+// divider, a greyed-out skeleton of the switch, and a compact hint about accepted value formats.
+.toggle-slicer__landing {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    max-width: 220px;
+    max-height: 100%;
+    padding: 12px;
+    box-sizing: border-box;
+    gap: 10px;
+    // Safety net for the guide below: it's only ever shown once the "toggle-slicer" container is
+    // big enough that it should fit (see the container query near the bottom of this file), but
+    // scroll rather than silently clip if a viewer's tile still ends up too tight for it.
+    overflow-y: auto;
+}
+
+.toggle-slicer__landing-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    color: var(--toggle-label-color, #605e5c);
+}
+
+.toggle-slicer__landing-icon {
+    width: 14px;
+    height: 14px;
+    flex: 0 0 auto;
+}
+
+.toggle-slicer__landing-heading {
+    font-size: 12px;
+    text-align: left;
+    line-height: 1.3;
+}
+
+.toggle-slicer__landing-divider {
+    width: 100%;
+    height: 1px;
+    background-color: #e1e1e1;
+}
+
+.toggle-slicer__landing-skeleton-track {
+    position: relative;
+    box-sizing: border-box;
+    width: 44px;
+    height: 22px;
+    border-radius: 999px;
+    background-color: #e4e4e4;
+    animation: toggle-slicer-skeleton-pulse 1.6s ease-in-out infinite;
+}
+
+.toggle-slicer__landing-skeleton-knob {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background-color: #c8c8c8;
+}
+
+.toggle-slicer__landing-hint {
+    font-size: 11px;
+    color: var(--toggle-label-color, #605e5c);
+    opacity: 0.8;
+    text-align: center;
+}
+
+// Copyable starter-DAX guide (create the table, then the measure) - hidden until there's room for
+// it (see the "toggle-slicer" container query near the bottom of this file), so it never crowds
+// out the always-visible heading/hint on a small/default-dropped tile.
+.toggle-slicer__landing-guide {
+    display: none;
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+    gap: 6px;
+    text-align: left;
+}
+
+.toggle-slicer__landing-guide-step {
+    font-size: 11px;
+    color: var(--toggle-label-color, #605e5c);
+}
+
+.toggle-slicer__landing-code-wrap {
+    position: relative;
+    width: 100%;
+}
+
+.toggle-slicer__landing-code {
+    margin: 0;
+    padding: 6px 30px 6px 6px;
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 10px;
+    line-height: 1.35;
+    color: #323130;
+    background-color: #f3f2f1;
+    border: 1px solid #e1e1e1;
+    border-radius: 4px;
+    box-sizing: border-box;
+    // A safety net, not the primary strategy - the guide's own container query only reveals it
+    // once "toggle-slicer__landing"'s widened max-width (below) should comfortably fit every line.
+    overflow-x: auto;
+    white-space: pre;
+}
+
+.toggle-slicer__landing-copy {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    font-size: 10px;
+    line-height: 1;
+    padding: 3px 6px;
+    font-family: inherit;
+    color: #323130;
+    background-color: #ffffff;
+    border: 1px solid #c8c6c4;
+    border-radius: 3px;
+    cursor: pointer;
+
+    &:hover {
+        background-color: #edebe9;
+    }
+
+    &:focus-visible {
+        outline: 2px solid rgba(96, 94, 92, 0.6);
+        outline-offset: 1px;
+    }
+}
+
+// Standard "sr-only" pattern - present in the accessibility tree (so aria-live can announce it)
+// without being visible or taking up layout space. Used for the Copy buttons' outcome
+// announcement - see landingCopyStatusEl in visual.ts.
+.toggle-slicer__visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+@keyframes toggle-slicer-skeleton-pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.6;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .toggle-slicer__track,
+    .toggle-slicer__knob,
+    .toggle-slicer__checkmark {
+        transition: none;
+    }
+
+    .toggle-slicer__switch:hover:not(.is-readonly) {
+        filter: none;
+    }
+
+    .toggle-slicer__landing-skeleton-track {
+        animation: none;
+    }
+}
+
+// The skeleton/divider are decorative flat greys with no real state to reflect (unlike the live
+// switch, which already gets its colours from applyColors()'s isHighContrast branch) - under
+// Windows High Contrast (forced-colors), fall back to system colours instead of custom greys that
+// forced-colors mode may otherwise render illegibly, and drop the pulse to match.
+@media (forced-colors: active) {
+    .toggle-slicer__landing-divider {
+        background-color: CanvasText;
+    }
+
+    .toggle-slicer__landing-skeleton-track {
+        background-color: Canvas;
+        border: 1px solid CanvasText;
+        animation: none;
+    }
+
+    .toggle-slicer__landing-skeleton-knob {
+        background-color: CanvasText;
+    }
+
+    .toggle-slicer__landing-code {
+        background-color: Canvas;
+        border: 1px solid CanvasText;
+    }
+
+    .toggle-slicer__landing-copy {
+        background-color: ButtonFace;
+        border: 1px solid ButtonText;
+    }
+}
+
+// Shrink the control on small tiles instead of overflowing or clipping.
+@container toggle-slicer (max-width: 90px) {
+    .toggle-slicer__label {
+        display: none;
+    }
+}
+
+// Only reveal the starter-DAX guide (and widen the landing page to comfortably fit its longest
+// line) once the tile is big enough - a report author is likely to have resized it while actively
+// setting up field bindings, but a small/default-dropped tile keeps just the compact hint instead.
+@container toggle-slicer (min-width: 260px) and (min-height: 200px) {
+    .toggle-slicer__landing {
+        max-width: 340px;
+    }
+
+    .toggle-slicer__landing-guide {
+        display: flex;
+    }
+}
