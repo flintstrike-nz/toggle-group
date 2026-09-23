@@ -211,7 +211,7 @@ All in the **Group rules** card, except Group enable, which comes from binding a
 
 | Rule | What it does |
 |---|---|
-| **Only one active** | Turning a toggle On turns every other toggle Off. Turning the active one Off leaves none On — except with the **Radio** control style, where (like a native radio group) the active option can't be clicked Off. |
+| **Only one active** | Turning a toggle On turns every other toggle Off. Turning the active one Off leaves none On — except with the **Radio** control style, where (like a native radio group) the active option can't be clicked Off. If several were already On when the rule was switched on, the next click brings the group back to at most one. |
 | **Master switch** | Adds a master toggle at the top; the rest are indented by **Indent** px. Master On/Off sets every toggle below it On/Off. It shows **On** when all are On, **Off** when none are, and **mixed** (a dash on the checkbox; a half-way knob on the toggle) when only some are. Clicking a mixed master turns them all On. It has no field of its own. Under Only one active, "all On" isn't allowed, so the master reads On when *any* toggle is On, and switching it On selects the first toggle. |
 | **Group enable** | Bind an On/Off field to the **Group enable** well. It's drawn as a header toggle at the very top, and everything below it (master included) is indented. Switching it Off **disables** the toggles below it — greyed out, not clickable, out of the tab order — **without changing their state**. Because it's a real field, DAX can read it (see [Group enable column](#group-enable-column)). |
 
@@ -317,7 +317,7 @@ If there's a Group enable toggle at the top, it's Off — switch it On. Otherwis
 That's radio behaviour under Only one active. Add a Master switch to clear the group, or use the Toggle/Checkbox style to allow clicking the active option Off.
 
 **Turning on Only one active didn't turn anything off.**
-Rules apply on the next click, so a group that already has several toggles On keeps them until someone clicks.
+Rules apply on the next click, so a group that already has several toggles On keeps them until someone clicks one — that click leaves at most one On.
 
 **Disabling the group didn't change my numbers.**
 By design, Group enable disables the controls without changing their state or filters. Gate your measures (or bridge) on the Group enable column — see [Group enable column](#group-enable-column).

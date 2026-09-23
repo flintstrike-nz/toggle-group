@@ -135,6 +135,7 @@ export class Visual implements IVisual {
     private titleWrapEl: HTMLElement;
     private titleEl: HTMLElement;
     private groupEl: HTMLElement;
+    private childrenEl: HTMLElement;
     private messageEl: HTMLElement;
     private landingPageEl: HTMLElement;
     private landingHeadingEl: HTMLElement;
@@ -189,6 +190,14 @@ export class Visual implements IVisual {
         // Rows are added/removed by ensureRowPool() as fields are bound/unbound.
         this.groupEl = document.createElement("div");
         this.groupEl.className = "toggle-group";
+
+        // The toggle rows proper, after any header rows (Group enable, master) that sit directly
+        // in groupEl. display: contents, so they still share groupEl's grid; its own element only
+        // exists so an exclusive radio list can be a radiogroup of radios alone, without the
+        // checkbox-drawn headers inside it (see render()).
+        this.childrenEl = document.createElement("div");
+        this.childrenEl.className = "toggle-group__children";
+        this.groupEl.appendChild(this.childrenEl);
 
         this.messageEl = document.createElement("div");
         this.messageEl.className = "toggle-slicer__message";
@@ -269,10 +278,29 @@ export class Visual implements IVisual {
         while (this.rows.length < this.items.length) {
             const row = this.buildRow(this.rows.length);
             this.rows.push(row);
-            this.groupEl.appendChild(row.rowEl);
+            this.childrenEl.appendChild(row.rowEl);
         }
         while (this.rows.length > this.items.length) {
             this.rows.pop().rowEl.remove();
+        }
+    }
+
+    /**
+     * Header rows go directly in groupEl, ahead of childrenEl; toggle rows go in childrenEl. Only
+     * re-parents when the layout actually changed (a header added/removed from the Format pane or
+     * well) - moving an element blurs it, so doing this on every render would drop keyboard focus
+     * after each click.
+     */
+    private placeRows(): void {
+        const headerEls = this.rows.filter((_row, index) => this.items[index].kind !== "toggle").map((row) => row.rowEl);
+        const toggleEls = this.rows.filter((_row, index) => this.items[index].kind === "toggle").map((row) => row.rowEl);
+        const expectedGroup = [...headerEls, this.childrenEl];
+        const same = (actual: HTMLCollection, expected: Element[]) =>
+            actual.length === expected.length && expected.every((el, i) => actual[i] === el);
+
+        if (!same(this.groupEl.children, expectedGroup) || !same(this.childrenEl.children, toggleEls)) {
+            expectedGroup.forEach((el) => this.groupEl.appendChild(el));
+            toggleEls.forEach((el) => this.childrenEl.appendChild(el));
         }
     }
 
@@ -814,7 +842,13 @@ export class Visual implements IVisual {
             .sort()
             .join("\u0001");
 
-        if (!staleKeys || staleKeys === this.lastStaleCleanup || !this.interactionsAllowed()) {
+        if (!staleKeys) {
+            // Nothing stale any more - forget the last attempt, so the same filter coming back
+            // later (a bookmark, Sync slicers, or the same field removed again) is cleaned too.
+            this.lastStaleCleanup = "";
+            return;
+        }
+        if (staleKeys === this.lastStaleCleanup || !this.interactionsAllowed()) {
             return;
         }
         this.lastStaleCleanup = staleKeys;
@@ -861,9 +895,9 @@ export class Visual implements IVisual {
      * - Master: Off (or Mixed) -> every child On; On -> every child Off. Under Only one active,
      *   "every child On" isn't allowed, so turning the master On selects just the first child.
      * - Group enable: flips only itself - its children keep their own state while disabled.
-     * - Toggle: flips itself; under Only one active, turning one On turns every other child Off.
-     *   A radio-skinned toggle under Only one active can't be clicked Off again, matching a native
-     *   radio group (use the master switch to clear the group).
+     * - Toggle: flips itself; under Only one active, turning one On turns every other child Off
+     *   and turning one Off clears the group. A radio-skinned toggle under Only one active can't be
+     *   clicked Off again, matching a native radio group (use the master switch to clear the group).
      */
     private handleClick(index: number): void {
         const item = this.items[index];
@@ -880,15 +914,19 @@ export class Visual implements IVisual {
             children.forEach((child, childIndex) => changes.set(child, turnOn && (!onlyOneActive || childIndex === 0)));
         } else if (item.kind === "enable") {
             changes.set(item, !item.isOn);
+        } else if (!onlyOneActive) {
+            changes.set(item, !item.isOn);
         } else {
-            if (item.isOn && onlyOneActive && this.skinFor(item) === "radio") {
+            // Every click under Only one active leaves at most one child On, even if the group
+            // arrived with several On (e.g. the rule was switched on after they were set): turning
+            // one On keeps just it, and turning one Off clears the group. A radio can't be clicked
+            // Off, so clicking an On radio only clears any others still On - or does nothing.
+            const isRadio = this.skinFor(item) === "radio";
+            if (item.isOn && isRadio && children.every((child) => child === item || !child.isOn)) {
                 return;
             }
-            const turnOn = !item.isOn;
-            changes.set(item, turnOn);
-            if (turnOn && onlyOneActive) {
-                children.filter((child) => child !== item).forEach((child) => changes.set(child, false));
-            }
+            const keepOn = !item.isOn || isRadio ? item : undefined;
+            children.forEach((child) => changes.set(child, child === keepOn));
         }
 
         this.applyStates(changes);
@@ -906,9 +944,15 @@ export class Visual implements IVisual {
             return;
         }
 
+        // Inside a radiogroup, arrows stay among the radios (and among the headers, from a header),
+        // rather than stepping across the radiogroup's boundary into controls outside it.
+        const current = this.items[index];
+        const isRadioGroup = this.formattingSettings.groupSettingsCard.onlyOneActive.value
+            && this.formattingSettings.toggleSettingsCard.controlStyle.value.value === "radio";
+        const sameZone = (item: GroupItem) => !isRadioGroup || (item.kind === "toggle") === (current.kind === "toggle");
         const focusable = this.items
             .map((item, itemIndex) => ({ item, itemIndex }))
-            .filter(({ item }) => !this.isDisabled(item))
+            .filter(({ item }) => !this.isDisabled(item) && sameZone(item))
             .map(({ itemIndex }) => itemIndex);
         const position = focusable.indexOf(index);
         let nextIndex: number | undefined;
@@ -951,7 +995,9 @@ export class Visual implements IVisual {
         event.preventDefault();
 
         const item = this.items[index];
-        if (!item || !this.interactionsAllowed()) {
+        // A disabled row is inert - the host menu's filter/drill actions would otherwise bypass
+        // Group enable just as a click would.
+        if (!item || !this.interactionsAllowed() || this.isDisabled(item)) {
             return;
         }
 
@@ -1092,6 +1138,7 @@ export class Visual implements IVisual {
 
     private render(): void {
         this.ensureRowPool();
+        this.placeRows();
 
         const groupCard = this.formattingSettings.groupSettingsCard;
         const nameCard = this.formattingSettings.nameSettingsCard;
@@ -1148,20 +1195,31 @@ export class Visual implements IVisual {
         // An exclusive radio list is announced as one radiogroup; anything else is a plain group.
         // Either way it's named by the title (when there is one), which is what tells several
         // toggle groups on one page apart for a screen reader user.
+        // The radiogroup is childrenEl - the toggle rows alone - so the checkbox-drawn header rows
+        // (Group enable, master) stay outside it as ordinary controls in the surrounding group.
         const isRadioGroup = groupCard.onlyOneActive.value && toggleCard.controlStyle.value.value === "radio";
-        this.groupEl.setAttribute("role", isRadioGroup ? "radiogroup" : "group");
-        if (titleText) {
-            this.groupEl.setAttribute("aria-labelledby", this.titleEl.id);
+        this.groupEl.setAttribute("role", "group");
+        if (isRadioGroup) {
+            this.childrenEl.setAttribute("role", "radiogroup");
         } else {
-            this.groupEl.removeAttribute("aria-labelledby");
+            this.childrenEl.removeAttribute("role");
+        }
+        for (const el of [this.groupEl, this.childrenEl]) {
+            if (titleText) {
+                el.setAttribute("aria-labelledby", this.titleEl.id);
+            } else {
+                el.removeAttribute("aria-labelledby");
+            }
         }
 
         // Roving tabindex for a radiogroup (one Tab stop - the checked radio, or the first enabled
-        // row if none is checked - with arrow keys moving within it, per the ARIA radio group
-        // pattern); every enabled row is its own Tab stop otherwise.
-        const enabledIndexes = this.items.map((item, index) => this.isDisabled(item) ? -1 : index).filter((index) => index !== -1);
-        const checkedRadioIndex = this.items.findIndex((item) => item.kind === "toggle" && item.isOn && !this.isDisabled(item));
-        const radioTabStop = checkedRadioIndex !== -1 ? checkedRadioIndex : enabledIndexes[0];
+        // radio if none is checked - with arrow keys moving within it, per the ARIA radio group
+        // pattern); header rows and every row outside a radiogroup are each their own Tab stop.
+        const enabledRadioIndexes = this.items
+            .map((item, index) => item.kind === "toggle" && !this.isDisabled(item) ? index : -1)
+            .filter((index) => index !== -1);
+        const checkedRadioIndex = enabledRadioIndexes.find((index) => this.items[index].isOn);
+        const radioTabStop = checkedRadioIndex !== undefined ? checkedRadioIndex : enabledRadioIndexes[0];
 
         this.items.forEach((item, index) => {
             const row = this.rows[index];
@@ -1181,7 +1239,8 @@ export class Visual implements IVisual {
             row.nameEl.classList.toggle("is-disabled", isDisabled);
             row.cellEl.classList.toggle("is-disabled", isDisabled);
 
-            const tabbable = !isDisabled && this.interactionsAllowed() && (!isRadioGroup || index === radioTabStop);
+            const tabbable = !isDisabled && this.interactionsAllowed()
+                && (!isRadioGroup || item.kind !== "toggle" || index === radioTabStop);
             this.renderSwitch(item, row, isDisabled, tabbable);
         });
     }
