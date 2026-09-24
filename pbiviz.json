@@ -1,18 +1,18 @@
 {
     "visual":  {
-                   "name":  "toggleSlicerVisual",
-                   "displayName":  "Toggle Group",
-                   "guid":  "toggleSlicerVisual",
+                   "name":  "togglesVisual",
+                   "displayName":  "Toggle Slicer Visuals",
+                   "guid":  "togglesVisual",
                    "visualClassName":  "Visual",
-                   "version":  "1.0.0.12",
+                   "version":  "1.0.0.1",
                    "description":  "A group of on/off toggles (switch, checkbox or radio) that each drive a disconnected-table filter, with optional only-one-active, master switch and group-enable rules.",
-                   "supportUrl":  "https://github.com/hayden-flintoft/toggle-slicer-visual/issues",
-                   "gitHubUrl":  "https://github.com/hayden-flintoft/toggle-slicer-visual"
+                   "supportUrl":  "https://github.com/hayden-flintoft/toggle-group/issues",
+                   "gitHubUrl":  "https://github.com/hayden-flintoft/toggle-group"
                },
     "apiVersion":  "5.11.1",
     "author":  {
                    "name":  "Hayden Flintoft",
-                   "email":  "hflintoft86@gmail.com"
+                   "email":  "hayden@flintstrike.co.nz"
                },
     "assets":  {
                    "icon":  "assets/icon.png"
