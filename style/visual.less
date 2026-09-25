@@ -141,8 +141,9 @@
         justify-content: space-between;
     }
 
-    // nameSettings.alignment: Justify - the group spreads names and toggles to its opposite edges,
-    // which needs the group (and so this wrapper) to span the frame's full width to have any room.
+    // nameSettings.alignment: Center, Right or Justify - the group moves names and toggles within its
+    // own width, which needs the group (and so this wrapper) to span the frame's full width to have
+    // any room to move into.
     // The margin reset matters: a cross-axis auto margin (is-title-align-left/right above) beats
     // align-self: stretch, which would otherwise leave this wrapper shrink-wrapped.
     &.is-group-stretched {
@@ -206,6 +207,10 @@
 
     &.is-names-hidden {
         grid-template-columns: max-content;
+    }
+
+    &.is-align-center {
+        justify-content: center;
     }
 
     &.is-align-right {

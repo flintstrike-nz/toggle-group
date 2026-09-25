@@ -1181,11 +1181,12 @@ export class Visual implements IVisual {
         this.titleWrapEl.classList.remove("is-title-align-left", "is-title-align-right", "is-title-align-justify");
         this.titleWrapEl.classList.add(`is-title-align-${titleCard.alignment.value.value}`);
 
-        // Names' Justify spreads names and toggles to the group's opposite edges, which only has
-        // room to happen once the group (and so titleWrapEl around it) fills the container's width.
+        // Every names alignment but Left (Center, Right, Justify) moves the rows within the group's
+        // width, which only has room to happen once the group (and so titleWrapEl around it) fills
+        // the container's width - a shrink-wrapped group has no spare space to center or push into.
         const namesShown = nameCard.show.value;
         const nameAlignment = String(nameCard.alignment.value.value);
-        this.titleWrapEl.classList.toggle("is-group-stretched", nameAlignment === "justify");
+        this.titleWrapEl.classList.toggle("is-group-stretched", nameAlignment !== "left");
 
         // Grid layout knobs - see .toggle-group in visual.less for how the name/switch columns,
         // indent and --toggle-max-level (names-right's hanging indent) fit together.
@@ -1193,7 +1194,7 @@ export class Visual implements IVisual {
         this.groupEl.classList.toggle("is-names-hidden", !namesShown);
         this.groupEl.classList.toggle("is-names-right", namesRight);
         this.groupEl.classList.toggle("is-readonly", !this.interactionsAllowed());
-        this.groupEl.classList.remove("is-align-left", "is-align-right", "is-align-justify");
+        this.groupEl.classList.remove("is-align-left", "is-align-center", "is-align-right", "is-align-justify");
         this.groupEl.classList.add(`is-align-${nameAlignment}`);
         this.groupEl.style.setProperty("--toggle-row-gap", `${groupCard.rowSpacing.value}px`);
         this.groupEl.style.setProperty("--toggle-name-gap", `${nameCard.spacing.value}px`);

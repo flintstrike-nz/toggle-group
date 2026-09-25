@@ -224,7 +224,7 @@ Master switch and Group enable can be combined: Group enable at the top, master 
 - **Three control styles** — sliding **Toggle**, square **Checkbox** or round **Radio**. All three share the same colours, border, sizing and "Make it fancy!" treatment.
 - **Group rules** — Only one active, Master switch (with mixed state), and Group enable (disable without resetting).
 - **Container border** — None, Flat, Embossed or Gutter, with colour, width, corner radius, padding and optional fill.
-- **Aligned layout** — names and toggles line up in columns, with names on either side and Left/Right/Justify alignment.
+- **Aligned layout** — names and toggles line up in columns, with names on either side and Left/Center/Right/Justify alignment.
 - **Sync slicers**, **bookmarks** and **persisted state** — every toggle's state is a real filter.
 - **Keyboard accessible** — <kbd>Space</kbd>/<kbd>Enter</kbd> toggle, arrow keys and <kbd>Home</kbd>/<kbd>End</kbd> move between rows, and an exclusive radio group is a single Tab stop. Each control's accessible name includes its toggle name and current state, and its role matches what's drawn (switch, checkbox or radio).
 - **Clickable names** — clicking a toggle's name toggles it, like a native label.
@@ -267,7 +267,7 @@ Master switch and Group enable can be combined: Group enable at the top, master 
 |---|---|---|
 | Show names | Show each toggle's name (its field's display name — rename it in the well) | On |
 | Name position | Name to the Left or Right of its toggle | Left |
-| Alignment | Pack names and toggles to the Left or Right, or Justify them to opposite edges | Left |
+| Alignment | Pack names and toggles to the Left, Center or Right of the container, or Justify them to opposite edges | Left |
 | Name spacing | Space in pixels between a name and its toggle | 8px |
 | Font / Font colour | Typography of the names | Segoe UI, 12px / Near-black |
 

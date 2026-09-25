@@ -114,7 +114,7 @@
     "Visual_NamePosition_DisplayName": "Name position",
     "Visual_NamePosition_Description": "Show each name to the left or right of its toggle.",
     "Visual_NameAlignment_DisplayName": "Alignment",
-    "Visual_NameAlignment_Description": "Pack names and toggles to the Left or Right, or Justify them to opposite edges of the group.",
+    "Visual_NameAlignment_Description": "Pack names and toggles to the Left, Center or Right of the container, or Justify them to opposite edges.",
     "Visual_NameSpacing_DisplayName": "Name spacing",
     "Visual_NameSpacing_Description": "Space in pixels between each name and its toggle.",
     "Visual_NameFont_DisplayName": "Font",

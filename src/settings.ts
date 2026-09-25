@@ -308,14 +308,16 @@ class NameSettingsCardSettings extends FormattingSettingsCard {
         value: { value: "left", displayName: "Left" }
     });
 
-    // Left/Right pack the name and toggle columns together against one edge; Justify spreads them
-    // to opposite edges of the group (stretching the group to the container's full width to do it).
+    // Left/Center/Right pack the name and toggle columns together against one edge or in the
+    // middle; Justify spreads them to opposite edges. Every option but Left stretches the group to
+    // the container's full width first, since that's where the spare room to move into comes from.
     alignment = new formattingSettings.ItemDropdown({
         name: "alignment",
         displayNameKey: "Visual_NameAlignment_DisplayName",
         descriptionKey: "Visual_NameAlignment_Description",
         items: [
             { value: "left", displayName: "Left" },
+            { value: "center", displayName: "Center" },
             { value: "right", displayName: "Right" },
             { value: "justify", displayName: "Justify" }
         ],
