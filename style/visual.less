@@ -127,6 +127,18 @@
         margin-right: auto;
     }
 
+    // Center: auto margins on both sides; with position Above, the title and the group are also
+    // centred on each other - the pre-group single toggle's look (title centred over the switch)
+    // once toggle names are hidden, since visible names widen the group being centred.
+    &.is-title-align-center {
+        margin-left: auto;
+        margin-right: auto;
+
+        &.toggle-slicer-wrap--stacked {
+            align-items: center;
+        }
+    }
+
     &.is-title-align-right {
         margin-left: auto;
 
@@ -141,8 +153,9 @@
         justify-content: space-between;
     }
 
-    // nameSettings.alignment: Justify - the group spreads names and toggles to its opposite edges,
-    // which needs the group (and so this wrapper) to span the frame's full width to have any room.
+    // nameSettings.alignment: Center, Right or Justify - the group moves names and toggles within its
+    // own width, which needs the group (and so this wrapper) to span the frame's full width to have
+    // any room to move into.
     // The margin reset matters: a cross-axis auto margin (is-title-align-left/right above) beats
     // align-self: stretch, which would otherwise leave this wrapper shrink-wrapped.
     &.is-group-stretched {
@@ -154,7 +167,11 @@
             align-items: stretch;
         }
 
-        .toggle-group {
+        // Inline titles only: the group grows along the row to fill the space beside the title.
+        // A stacked (Above) wrapper is a column, where flex-grow would be vertical - stretching the
+        // grid's rows apart and swallowing the space Title -> Justify's space-between needs to keep
+        // the title and rows at opposite ends. align-items: stretch above already gives it width.
+        &:not(.toggle-slicer-wrap--stacked) .toggle-group {
             flex: 1 1 auto;
         }
     }
@@ -174,6 +191,10 @@
     // centring over it - that edge being whichever side titleSettings.alignment packs toward.
     .toggle-slicer-wrap--stacked > & {
         text-align: left;
+    }
+
+    .toggle-slicer-wrap--stacked.is-title-align-center > & {
+        text-align: center;
     }
 
     .toggle-slicer-wrap--stacked.is-title-align-right > & {
@@ -208,8 +229,17 @@
         grid-template-columns: max-content;
     }
 
+    // "safe" keeps rows too wide for the tile starting at the left edge (reachable by scrolling)
+    // instead of overflowing past it; the plain value first is the fallback for hosts whose
+    // Chromium predates "safe" in grid, where the second declaration is dropped as invalid.
+    &.is-align-center {
+        justify-content: center;
+        justify-content: safe center;
+    }
+
     &.is-align-right {
         justify-content: end;
+        justify-content: safe end;
     }
 
     // nameSettings.alignment: Justify - the flexible column takes up the slack, pushing names and
@@ -456,7 +486,7 @@
     border-radius: 50%;
     background-color: var(--toggle-knob-color, #ffffff);
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
-    transition: transform 0.15s ease-in-out, background-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+    transition: transform 0.15s ease-in-out, left 0.15s ease-in-out, background-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
 }
 
 .toggle-slicer__switch.is-on .toggle-slicer__knob {
@@ -474,6 +504,73 @@
 .toggle-slicer__switch.is-mixed .toggle-slicer__knob {
     background-color: var(--toggle-knob-color-on, #ffffff);
     transform: translateX(calc((var(--toggle-track-width) - var(--toggle-track-height)) / 2));
+}
+
+// Label position "Inside switch" (toggle skin only - see renderSwitch()): the state text sits inside
+// the track, opposite the knob. The track grows past its 2:1 width to fit the wider of the On/Off
+// texts (both overlaid in one grid cell, only the current one visible), so it doesn't change width
+// when clicked and every row - sharing the same two labels - gets the same width. With the width no
+// longer a known ratio of the height, the knob is placed with left: 100% of the track's padding box
+// minus its own size instead of the fixed translateX above; the border terms cancel as before.
+.toggle-slicer__inner {
+    display: none;
+}
+
+.toggle-slicer__switch.is-inside {
+    --toggle-knob-size: calc(var(--toggle-track-height) - 2 * var(--toggle-effective-border-width, 2px));
+    width: auto;
+    min-width: var(--toggle-track-width);
+
+    .toggle-slicer__inner {
+        position: relative;
+        display: grid;
+        align-items: center;
+        height: 100%;
+        font-family: var(--toggle-label-font-family, "Segoe UI"), wf_segoe-ui_normal, helvetica, arial, sans-serif;
+        // The label font size, capped so the text always fits the track's height.
+        font-size: min(var(--toggle-label-font-size, 12px), calc(var(--toggle-track-height) * 0.6));
+        font-weight: var(--toggle-label-font-weight, normal);
+        font-style: var(--toggle-label-font-style, normal);
+        text-decoration: var(--toggle-label-text-decoration, none);
+        line-height: 1;
+        white-space: nowrap;
+        user-select: none;
+        pointer-events: none;
+    }
+
+    .toggle-slicer__inner-label {
+        grid-area: 1 / 1;
+        visibility: hidden;
+    }
+
+    // Off: knob on the left, text on the right in the label colour (over the lighter Off fill).
+    .toggle-slicer__inner-label--off {
+        justify-self: end;
+        padding: 0 calc(var(--toggle-track-height) * 0.4) 0 calc(var(--toggle-track-height) * 1.2);
+        color: var(--toggle-label-font-color, #605e5c);
+    }
+
+    // On: text on the left in the knob's colour (over the On fill), knob on the right.
+    .toggle-slicer__inner-label--on {
+        justify-self: start;
+        padding: 0 calc(var(--toggle-track-height) * 1.2) 0 calc(var(--toggle-track-height) * 0.4);
+        color: var(--toggle-knob-color-on, #ffffff);
+    }
+
+    &.is-off .toggle-slicer__inner-label--off,
+    &.is-on .toggle-slicer__inner-label--on {
+        visibility: visible;
+    }
+
+    &.is-on .toggle-slicer__knob {
+        transform: none;
+        left: calc(100% - var(--toggle-knob-size));
+    }
+
+    &.is-mixed .toggle-slicer__knob {
+        transform: none;
+        left: calc((100% - var(--toggle-knob-size)) / 2);
+    }
 }
 
 // "3D depth" option, knob half: a sheen gradient plus a stronger drop shadow makes it look like a

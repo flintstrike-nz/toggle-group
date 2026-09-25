@@ -224,7 +224,7 @@ Master switch and Group enable can be combined: Group enable at the top, master 
 - **Three control styles** — sliding **Toggle**, square **Checkbox** or round **Radio**. All three share the same colours, border, sizing and "Make it fancy!" treatment.
 - **Group rules** — Only one active, Master switch (with mixed state), and Group enable (disable without resetting).
 - **Container border** — None, Flat, Embossed or Gutter, with colour, width, corner radius, padding and optional fill.
-- **Aligned layout** — names and toggles line up in columns, with names on either side and Left/Right/Justify alignment.
+- **Aligned layout** — names and toggles line up in columns, with names on either side and Left/Center/Right/Justify alignment.
 - **Sync slicers**, **bookmarks** and **persisted state** — every toggle's state is a real filter.
 - **Keyboard accessible** — <kbd>Space</kbd>/<kbd>Enter</kbd> toggle, arrow keys and <kbd>Home</kbd>/<kbd>End</kbd> move between rows, and an exclusive radio group is a single Tab stop. Each control's accessible name includes its toggle name and current state, and its role matches what's drawn (switch, checkbox or radio).
 - **Clickable names** — clicking a toggle's name toggles it, like a native label.
@@ -255,7 +255,7 @@ Master switch and Group enable can be combined: Group enable at the top, master 
 | Off colour | Fill of each toggle when Off | Grey |
 | On label / Off label | State text shown next to a toggle when On/Off | "On" / "Off" |
 | Show labels | Show the On/Off state text next to each toggle | Off |
-| Label position | State text left or right of each toggle (Label left / Label right), or above it (Above) | Label left |
+| Label position | State text left or right of each toggle (Label left / Label right), above it (Above), or inside the switch opposite the knob (Inside switch - the track widens to fit the longer label; toggle style only, checkboxes and radios show it on the right) | Label left |
 | Label spacing | Space in pixels between a toggle and its state text | 8px |
 | Font / Font colour | Typography of the state text | Arial, 12px, bold / Dark blue |
 | Show border / Border colour / Border width | A coloured ring around each toggle's track | Off / Dark grey / 2px |
@@ -267,7 +267,7 @@ Master switch and Group enable can be combined: Group enable at the top, master 
 |---|---|---|
 | Show names | Show each toggle's name (its field's display name — rename it in the well) | On |
 | Name position | Name to the Left or Right of its toggle | Left |
-| Alignment | Pack names and toggles to the Left or Right, or Justify them to opposite edges | Left |
+| Alignment | Pack names and toggles to the Left, Center or Right of the container, or Justify them to opposite edges. With an Inline title, the rows align within the space beside the title (so they never run under it), and Title → Alignment has no spare room left to act on | Left |
 | Name spacing | Space in pixels between a name and its toggle | 8px |
 | Font / Font colour | Typography of the names | Segoe UI, 12px / Near-black |
 
@@ -288,7 +288,7 @@ Master switch and Group enable can be combined: Group enable at the top, master 
 |---|---|---|
 | Title text | Heading this visual renders itself (separate from Power BI's native visual title). Clear it to hide | "Toggle group" |
 | Title position | Above the group, or before/after it (Inline left / Inline right) | Above |
-| Alignment | Left, Right, or Justify (title and group to opposite ends) | Left |
+| Alignment | Left, Center, Right, or Justify (title and group to opposite ends). Center with the title Above and **Toggle names → Show names** off gives the classic single-toggle look: title centred over the toggle, in the middle of the tile | Left |
 | Title spacing | Space in pixels between the title and the group | 8px |
 | Font / Font colour | Typography of the title | Segoe UI, 14px, bold / Dark grey |
 

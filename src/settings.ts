@@ -105,6 +105,8 @@ class ToggleSettingsCardSettings extends FormattingSettingsCard {
     // value only decides which side of the switch it sits on. This replaces the old two-item
     // "inline"/"above" list's "inline" meaning (both On/Off labels always flanking the switch).
     // Where each whole row sits within the group is nameSettings.alignment's job, not this one's.
+    // "Inside switch" draws the text inside the toggle skin's track, opposite the knob - the track
+    // widens to fit; checkbox/radio are too small to hold text, so they fall back to Label right.
     labelPosition = new formattingSettings.ItemDropdown({
         name: "labelPosition",
         displayNameKey: "Visual_LabelPosition_DisplayName",
@@ -112,7 +114,8 @@ class ToggleSettingsCardSettings extends FormattingSettingsCard {
         items: [
             { value: "inline-left", displayName: "Label left" },
             { value: "inline-right", displayName: "Label right" },
-            { value: "above", displayName: "Above" }
+            { value: "above", displayName: "Above" },
+            { value: "inside", displayName: "Inside switch" }
         ],
         value: { value: "inline-left", displayName: "Label left" }
     });
@@ -212,6 +215,9 @@ class ToggleSettingsCardSettings extends FormattingSettingsCard {
     onPreProcess(): void {
         this.borderColor.visible = this.showBorder.value;
         this.borderWidth.visible = this.showBorder.value;
+        // Inside the track, the text's padding follows the switch's height instead; checkbox/radio
+        // fall back to Label right, so spacing still applies to them.
+        this.labelSpacing.visible = !(this.labelPosition.value.value === "inside" && this.controlStyle.value.value === "toggle");
     }
 }
 
@@ -308,14 +314,16 @@ class NameSettingsCardSettings extends FormattingSettingsCard {
         value: { value: "left", displayName: "Left" }
     });
 
-    // Left/Right pack the name and toggle columns together against one edge; Justify spreads them
-    // to opposite edges of the group (stretching the group to the container's full width to do it).
+    // Left/Center/Right pack the name and toggle columns together against one edge or in the
+    // middle; Justify spreads them to opposite edges. Every option but Left stretches the group to
+    // the container's full width first, since that's where the spare room to move into comes from.
     alignment = new formattingSettings.ItemDropdown({
         name: "alignment",
         displayNameKey: "Visual_NameAlignment_DisplayName",
         descriptionKey: "Visual_NameAlignment_Description",
         items: [
             { value: "left", displayName: "Left" },
+            { value: "center", displayName: "Center" },
             { value: "right", displayName: "Right" },
             { value: "justify", displayName: "Justify" }
         ],
@@ -525,7 +533,9 @@ class TitleSettingsCardSettings extends FormattingSettingsCard {
     });
 
     // Governs where the whole title+switch assembly (titleWrapEl) sits within the visual's tile,
-    // replacing the previous always-centred layout. "Justify" stretches titleWrapEl to fill the tile
+    // replacing the previous always-centred layout. "Center" brings that centred look back as an
+    // option - with position Above (and Toggle names -> Show names off), the title sits centred over
+    // a centred toggle, exactly like the pre-group single toggle. "Justify" stretches titleWrapEl to fill the tile
     // and spaces its own two children (the title, and the switch+label group) to opposite ends along
     // whichever axis position currently uses - horizontally when Inline, vertically when Above -
     // rather than leaving them shrink-wrapped together in the middle.
@@ -535,6 +545,7 @@ class TitleSettingsCardSettings extends FormattingSettingsCard {
         descriptionKey: "Visual_TitleAlignment_Description",
         items: [
             { value: "left", displayName: "Left" },
+            { value: "center", displayName: "Center" },
             { value: "right", displayName: "Right" },
             { value: "justify", displayName: "Justify" }
         ],

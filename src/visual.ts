@@ -114,6 +114,8 @@ interface RowElements {
     cellEl: HTMLElement;
     offLabelEl: HTMLElement;
     onLabelEl: HTMLElement;
+    innerOffEl: HTMLElement;
+    innerOnEl: HTMLElement;
     switchEl: HTMLElement;
 }
 
@@ -250,6 +252,20 @@ export class Visual implements IVisual {
 
         switchEl.appendChild(trackEl);
 
+        // Label position "Inside switch": both states' text overlaid in one grid cell so the track
+        // is sized to the wider of the two and doesn't change width when clicked - visual.less
+        // shows only the current one. Decorative, since the switch's aria-label names both states.
+        const innerEl = document.createElement("span");
+        innerEl.className = "toggle-slicer__inner";
+        innerEl.setAttribute("aria-hidden", "true");
+        const innerOffEl = document.createElement("span");
+        innerOffEl.className = "toggle-slicer__inner-label toggle-slicer__inner-label--off";
+        const innerOnEl = document.createElement("span");
+        innerOnEl.className = "toggle-slicer__inner-label toggle-slicer__inner-label--on";
+        innerEl.appendChild(innerOffEl);
+        innerEl.appendChild(innerOnEl);
+        switchEl.appendChild(innerEl);
+
         const onLabelEl = document.createElement("span");
         onLabelEl.className = "toggle-slicer__label toggle-slicer__label--on";
 
@@ -270,7 +286,7 @@ export class Visual implements IVisual {
         switchEl.addEventListener("pointermove", (event: PointerEvent) => this.moveTooltip(event));
         switchEl.addEventListener("pointerleave", (event: PointerEvent) => this.hideTooltip(event));
 
-        return { rowEl, nameEl, cellEl, offLabelEl, onLabelEl, switchEl };
+        return { rowEl, nameEl, cellEl, offLabelEl, onLabelEl, innerOffEl, innerOnEl, switchEl };
     }
 
     /** Grows/shrinks the row pool to match this.items, reusing existing rows so focus survives a re-render. */
@@ -1178,14 +1194,15 @@ export class Visual implements IVisual {
         // Where the whole title+group assembly sits in the container - applied to titleWrapEl
         // itself via CSS auto margins (see visual.less), not the shared "target" root, since target
         // is also the parent of the unrelated landing-page/validation-message sections.
-        this.titleWrapEl.classList.remove("is-title-align-left", "is-title-align-right", "is-title-align-justify");
+        this.titleWrapEl.classList.remove("is-title-align-left", "is-title-align-center", "is-title-align-right", "is-title-align-justify");
         this.titleWrapEl.classList.add(`is-title-align-${titleCard.alignment.value.value}`);
 
-        // Names' Justify spreads names and toggles to the group's opposite edges, which only has
-        // room to happen once the group (and so titleWrapEl around it) fills the container's width.
+        // Every names alignment but Left (Center, Right, Justify) moves the rows within the group's
+        // width, which only has room to happen once the group (and so titleWrapEl around it) fills
+        // the container's width - a shrink-wrapped group has no spare space to center or push into.
         const namesShown = nameCard.show.value;
         const nameAlignment = String(nameCard.alignment.value.value);
-        this.titleWrapEl.classList.toggle("is-group-stretched", nameAlignment === "justify");
+        this.titleWrapEl.classList.toggle("is-group-stretched", nameAlignment !== "left");
 
         // Grid layout knobs - see .toggle-group in visual.less for how the name/switch columns,
         // indent and --toggle-max-level (names-right's hanging indent) fit together.
@@ -1193,7 +1210,7 @@ export class Visual implements IVisual {
         this.groupEl.classList.toggle("is-names-hidden", !namesShown);
         this.groupEl.classList.toggle("is-names-right", namesRight);
         this.groupEl.classList.toggle("is-readonly", !this.interactionsAllowed());
-        this.groupEl.classList.remove("is-align-left", "is-align-right", "is-align-justify");
+        this.groupEl.classList.remove("is-align-left", "is-align-center", "is-align-right", "is-align-justify");
         this.groupEl.classList.add(`is-align-${nameAlignment}`);
         this.groupEl.style.setProperty("--toggle-row-gap", `${groupCard.rowSpacing.value}px`);
         this.groupEl.style.setProperty("--toggle-name-gap", `${nameCard.spacing.value}px`);
@@ -1260,7 +1277,7 @@ export class Visual implements IVisual {
     private renderSwitch(item: GroupItem, row: RowElements, isDisabled: boolean, tabbable: boolean): void {
         const card = this.formattingSettings.toggleSettingsCard;
         const groupCard = this.formattingSettings.groupSettingsCard;
-        const { switchEl, cellEl, onLabelEl, offLabelEl } = row;
+        const { switchEl, cellEl, onLabelEl, offLabelEl, innerOnEl, innerOffEl } = row;
         const isMixed = item.isMixed;
         const isOn = item.isOn && !isMixed;
 
@@ -1298,10 +1315,15 @@ export class Visual implements IVisual {
         offLabelEl.textContent = card.offLabel.value;
         cellEl.style.setProperty("--toggle-label-gap", `${card.labelSpacing.value}px`);
 
-        // All three positions ("above", "inline-left", "inline-right") show only the label matching
-        // the current state - "inline-left"/"inline-right" only differ in which side of the switch
-        // that single label sits on, via CSS order (see visual.less), not in what's shown.
-        const labelPosition = this.normalizeLegacyInlinePosition(card.labelPosition.value.value);
+        // All positions show only the label matching the current state - "inline-left"/
+        // "inline-right" only differ in which side of the switch that single label sits on, via CSS
+        // order (see visual.less), not in what's shown. "inside" puts it in the toggle skin's track
+        // instead (is-inside); a checkbox or radio is too small to hold text, so it falls back to
+        // Label right, the conventional side for a checkbox's text.
+        let labelPosition = this.normalizeLegacyInlinePosition(card.labelPosition.value.value);
+        if (labelPosition === "inside" && skin !== "toggle") {
+            labelPosition = "inline-right";
+        }
         cellEl.classList.toggle("toggle-slicer--stacked", labelPosition === "above");
         cellEl.classList.toggle("toggle-slicer--inline-left", labelPosition === "inline-left");
         cellEl.classList.toggle("toggle-slicer--inline-right", labelPosition === "inline-right");
@@ -1309,8 +1331,12 @@ export class Visual implements IVisual {
         // showLabels false always wins over the stylesheet's container-query auto-hide, regardless
         // of size. A Mixed master shows neither, since it's neither On nor Off.
         const showLabels = card.showLabels.value;
-        onLabelEl.style.display = showLabels && isOn ? "" : "none";
-        offLabelEl.style.display = showLabels && !isOn && !isMixed ? "" : "none";
+        const inside = showLabels && labelPosition === "inside";
+        switchEl.classList.toggle("is-inside", inside);
+        innerOnEl.textContent = inside ? card.onLabel.value : "";
+        innerOffEl.textContent = inside ? card.offLabel.value : "";
+        onLabelEl.style.display = showLabels && !inside && isOn ? "" : "none";
+        offLabelEl.style.display = showLabels && !inside && !isOn && !isMixed ? "" : "none";
 
         // The aria-label always names the row and both states regardless of showLabels/names, since
         // hidden visible text makes the accessible name more important, not less. Names and label
