@@ -288,7 +288,7 @@ Master switch and Group enable can be combined: Group enable at the top, master 
 |---|---|---|
 | Title text | Heading this visual renders itself (separate from Power BI's native visual title). Clear it to hide | "Toggle group" |
 | Title position | Above the group, or before/after it (Inline left / Inline right) | Above |
-| Alignment | Left, Right, or Justify (title and group to opposite ends) | Left |
+| Alignment | Left, Center, Right, or Justify (title and group to opposite ends). Center with the title Above gives the classic single-toggle look: title centred over the toggles, in the middle of the tile | Left |
 | Title spacing | Space in pixels between the title and the group | 8px |
 | Font / Font colour | Typography of the title | Segoe UI, 14px, bold / Dark grey |
 

@@ -527,7 +527,9 @@ class TitleSettingsCardSettings extends FormattingSettingsCard {
     });
 
     // Governs where the whole title+switch assembly (titleWrapEl) sits within the visual's tile,
-    // replacing the previous always-centred layout. "Justify" stretches titleWrapEl to fill the tile
+    // replacing the previous always-centred layout. "Center" brings that centred look back as an
+    // option - with position Above, the title sits centred over a centred group, exactly like the
+    // pre-group single toggle. "Justify" stretches titleWrapEl to fill the tile
     // and spaces its own two children (the title, and the switch+label group) to opposite ends along
     // whichever axis position currently uses - horizontally when Inline, vertically when Above -
     // rather than leaving them shrink-wrapped together in the middle.
@@ -537,6 +539,7 @@ class TitleSettingsCardSettings extends FormattingSettingsCard {
         descriptionKey: "Visual_TitleAlignment_Description",
         items: [
             { value: "left", displayName: "Left" },
+            { value: "center", displayName: "Center" },
             { value: "right", displayName: "Right" },
             { value: "justify", displayName: "Justify" }
         ],

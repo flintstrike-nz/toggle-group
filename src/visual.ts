@@ -1178,7 +1178,7 @@ export class Visual implements IVisual {
         // Where the whole title+group assembly sits in the container - applied to titleWrapEl
         // itself via CSS auto margins (see visual.less), not the shared "target" root, since target
         // is also the parent of the unrelated landing-page/validation-message sections.
-        this.titleWrapEl.classList.remove("is-title-align-left", "is-title-align-right", "is-title-align-justify");
+        this.titleWrapEl.classList.remove("is-title-align-left", "is-title-align-center", "is-title-align-right", "is-title-align-justify");
         this.titleWrapEl.classList.add(`is-title-align-${titleCard.alignment.value.value}`);
 
         // Every names alignment but Left (Center, Right, Justify) moves the rows within the group's
