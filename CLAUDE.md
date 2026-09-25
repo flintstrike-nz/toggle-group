@@ -7,9 +7,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
  1. ~~Address todo comments in src\settings.ts.~~ Done.
  2. ~~Add checkbox option as graphical skin of toggle.~~ Done - see `toggleSettings.controlStyle` below.
  3. ~~Add radio option as graphical skin of toggle.~~ Done - see `toggleSettings.controlStyle` below.
- 4. ~~Change the color anf veritcle alignment of the Toggle icon png to be easier to see and better aligned.~~ Done - `assets/icon.png` regenerated with a taller/darker track, centered both ways in the 20x20 canvas.
+ 4. ~~Change the color anf veritcle alignment of the Toggle icon png to be easier to see and better aligned.~~ Done - `assets/icon.png` is now two stacked toggles (top On in green `#1F894C` with its knob right, bottom Off in grey with its knob left), drawn supersampled and downsampled to an 80x80 PNG. The Visualizations pane shows it in a 20x20 slot, so the extra resolution (4x) keeps it sharp on high-DPI and scaled displays; `pbiviz` doesn't enforce an icon size, it only recommends 20x20.
  5. ~~Convert the single toggle into a toggle group (dynamic field well, container border styles, Only one active / Master switch / Group enable rules).~~ Done - see "Toggle group" notes below.
- 6. Verify in Power BI Desktop/Service against a real model (the group was built and tested against a mock host - see Testing below): multi-column data view (one CROSSJOIN group table), `rolesIndex` ordering, the array `applyJsonFilter()` round-trip, and Sync slicers with several filtered columns. `assets/icon.png` still shows a single switch.
+ 6. Verify in Power BI Desktop/Service against a real model (the group was built and tested against a mock host - see Testing below): multi-column data view (one CROSSJOIN group table), `rolesIndex` ordering, the array `applyJsonFilter()` round-trip, and Sync slicers with several filtered columns.
 
 
 ## Project Overview
