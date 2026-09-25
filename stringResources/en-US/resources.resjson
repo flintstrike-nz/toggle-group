@@ -38,7 +38,7 @@
     "Visual_ShowLabels_DisplayName": "Show labels",
     "Visual_ShowLabels_Description": "Show On/Off state text next to each toggle when there's room for it. Turn off to always hide it.",
     "Visual_LabelPosition_DisplayName": "Label position",
-    "Visual_LabelPosition_Description": "Show the current state's text to the left or right of each toggle (Label left / Label right), or centred above it (Above).",
+    "Visual_LabelPosition_Description": "Show the current state's text to the left or right of each toggle (Label left / Label right), centred above it (Above), or inside the switch opposite the knob (Inside switch - toggle style only; checkboxes and radios show it on the right).",
     "Visual_LabelSpacing_DisplayName": "Label spacing",
     "Visual_LabelSpacing_Description": "Space in pixels between the switch and its label(s).",
     "Visual_LabelFont_DisplayName": "Font",

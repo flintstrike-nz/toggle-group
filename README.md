@@ -255,7 +255,7 @@ Master switch and Group enable can be combined: Group enable at the top, master 
 | Off colour | Fill of each toggle when Off | Grey |
 | On label / Off label | State text shown next to a toggle when On/Off | "On" / "Off" |
 | Show labels | Show the On/Off state text next to each toggle | Off |
-| Label position | State text left or right of each toggle (Label left / Label right), or above it (Above) | Label left |
+| Label position | State text left or right of each toggle (Label left / Label right), above it (Above), or inside the switch opposite the knob (Inside switch - the track widens to fit the longer label; toggle style only, checkboxes and radios show it on the right) | Label left |
 | Label spacing | Space in pixels between a toggle and its state text | 8px |
 | Font / Font colour | Typography of the state text | Arial, 12px, bold / Dark blue |
 | Show border / Border colour / Border width | A coloured ring around each toggle's track | Off / Dark grey / 2px |

@@ -105,6 +105,8 @@ class ToggleSettingsCardSettings extends FormattingSettingsCard {
     // value only decides which side of the switch it sits on. This replaces the old two-item
     // "inline"/"above" list's "inline" meaning (both On/Off labels always flanking the switch).
     // Where each whole row sits within the group is nameSettings.alignment's job, not this one's.
+    // "Inside switch" draws the text inside the toggle skin's track, opposite the knob - the track
+    // widens to fit; checkbox/radio are too small to hold text, so they fall back to Label right.
     labelPosition = new formattingSettings.ItemDropdown({
         name: "labelPosition",
         displayNameKey: "Visual_LabelPosition_DisplayName",
@@ -112,7 +114,8 @@ class ToggleSettingsCardSettings extends FormattingSettingsCard {
         items: [
             { value: "inline-left", displayName: "Label left" },
             { value: "inline-right", displayName: "Label right" },
-            { value: "above", displayName: "Above" }
+            { value: "above", displayName: "Above" },
+            { value: "inside", displayName: "Inside switch" }
         ],
         value: { value: "inline-left", displayName: "Label left" }
     });
@@ -212,6 +215,9 @@ class ToggleSettingsCardSettings extends FormattingSettingsCard {
     onPreProcess(): void {
         this.borderColor.visible = this.showBorder.value;
         this.borderWidth.visible = this.showBorder.value;
+        // Inside the track, the text's padding follows the switch's height instead; checkbox/radio
+        // fall back to Label right, so spacing still applies to them.
+        this.labelSpacing.visible = !(this.labelPosition.value.value === "inside" && this.controlStyle.value.value === "toggle");
     }
 }
 

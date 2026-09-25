@@ -102,12 +102,13 @@
                 },
                 "labelPosition": {
                     "displayName": "Label position",
-                    "description": "Show the current state's text to the left or right of each toggle (Label left / Label right), or centred above it (Above).",
+                    "description": "Show the current state's text to the left or right of each toggle (Label left / Label right), centred above it (Above), or inside the switch opposite the knob (Inside switch - toggle style only; checkboxes and radios show it on the right).",
                     "type": {
                         "enumeration": [
                             { "displayName": "Label left", "value": "inline-left" },
                             { "displayName": "Label right", "value": "inline-right" },
-                            { "displayName": "Above", "value": "above" }
+                            { "displayName": "Above", "value": "above" },
+                            { "displayName": "Inside switch", "value": "inside" }
                         ]
                     }
                 },
