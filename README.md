@@ -267,7 +267,7 @@ Master switch and Group enable can be combined: Group enable at the top, master 
 |---|---|---|
 | Show names | Show each toggle's name (its field's display name — rename it in the well) | On |
 | Name position | Name to the Left or Right of its toggle | Left |
-| Alignment | Pack names and toggles to the Left, Center or Right of the container, or Justify them to opposite edges | Left |
+| Alignment | Pack names and toggles to the Left, Center or Right of the container, or Justify them to opposite edges. With an Inline title, the rows align within the space beside the title (so they never run under it), and Title → Alignment has no spare room left to act on | Left |
 | Name spacing | Space in pixels between a name and its toggle | 8px |
 | Font / Font colour | Typography of the names | Segoe UI, 12px / Near-black |
 
