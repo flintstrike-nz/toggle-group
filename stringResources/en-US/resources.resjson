@@ -66,7 +66,7 @@
     "Visual_TitlePosition_DisplayName": "Title position",
     "Visual_TitlePosition_Description": "Show the title above the group (Above), before it (Inline left), or after it (Inline right).",
     "Visual_TitleAlignment_DisplayName": "Alignment",
-    "Visual_TitleAlignment_Description": "Position of the title+group assembly within the container: hugging the left edge, centred, hugging the right edge, or Justify (spread the title and group to opposite ends). Center with the title Above gives the classic single-toggle look.",
+    "Visual_TitleAlignment_Description": "Position of the title+group assembly within the container: hugging the left edge, centred, hugging the right edge, or Justify (spread the title and group to opposite ends). Center with the title Above and toggle names hidden gives the classic single-toggle look.",
     "Visual_TitleSpacing_DisplayName": "Title spacing",
     "Visual_TitleSpacing_Description": "Space in pixels between the title and the group.",
     "Visual_TitleFont_DisplayName": "Font",

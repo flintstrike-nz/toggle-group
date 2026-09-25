@@ -128,7 +128,8 @@
     }
 
     // Center: auto margins on both sides; with position Above, the title and the group are also
-    // centred on each other - the pre-group single toggle's look (title centred over the switch).
+    // centred on each other - the pre-group single toggle's look (title centred over the switch)
+    // once toggle names are hidden, since visible names widen the group being centred.
     &.is-title-align-center {
         margin-left: auto;
         margin-right: auto;
@@ -166,7 +167,11 @@
             align-items: stretch;
         }
 
-        .toggle-group {
+        // Inline titles only: the group grows along the row to fill the space beside the title.
+        // A stacked (Above) wrapper is a column, where flex-grow would be vertical - stretching the
+        // grid's rows apart and swallowing the space Title -> Justify's space-between needs to keep
+        // the title and rows at opposite ends. align-items: stretch above already gives it width.
+        &:not(.toggle-slicer-wrap--stacked) .toggle-group {
             flex: 1 1 auto;
         }
     }
@@ -224,12 +229,17 @@
         grid-template-columns: max-content;
     }
 
+    // "safe" keeps rows too wide for the tile starting at the left edge (reachable by scrolling)
+    // instead of overflowing past it; the plain value first is the fallback for hosts whose
+    // Chromium predates "safe" in grid, where the second declaration is dropped as invalid.
     &.is-align-center {
         justify-content: center;
+        justify-content: safe center;
     }
 
     &.is-align-right {
         justify-content: end;
+        justify-content: safe end;
     }
 
     // nameSettings.alignment: Justify - the flexible column takes up the slack, pushing names and
