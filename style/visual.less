@@ -37,7 +37,7 @@
     font-family: "Segoe UI", wf_segoe-ui_normal, helvetica, arial, sans-serif;
 }
 
-// The group's bordered container (containerSettings) - fills the tile, so the border reads as the
+// The group's bordered container (the Border & background card) - fills the tile, so the border reads as the
 // visual's own edge, and scrolls rather than clips when more rows are bound than fit. Border
 // treatments are fixed rgba() shading layered over the report author's own colour/width, the same
 // approach .is-depth uses on each toggle, so they work over any colour without needing its hue:
@@ -80,7 +80,7 @@
             0 1px 0 rgba(255, 255, 255, 0.7);
     }
 
-    // containerSettings.verticalAlignment - auto margins rather than justify-content, since
+    // layout.verticalAlignment - auto margins rather than justify-content, since
     // justify-content: center pushes overflowing content off the top of a scroll container where it
     // can't be scrolled back to, whereas an auto margin just collapses to 0 once content overflows.
     &.is-valign-middle > .toggle-slicer-wrap {
@@ -107,7 +107,7 @@
         align-items: flex-start;
     }
 
-    // "Inline right" (titleSettings.position) - titleEl already comes before the group in DOM
+    // "Inline right" (title.position) - titleEl already comes before the group in DOM
     // order by default ("Inline left"), so only the "right" variant needs an order override to swap
     // sides; "Above" (--stacked) always keeps the title first/top regardless.
     &--inline-right {
@@ -116,7 +116,7 @@
         }
     }
 
-    // titleSettings.alignment - positions titleWrapEl itself within the frame via cross-axis auto
+    // title.alignment - positions titleWrapEl itself within the frame via cross-axis auto
     // margins (the frame is a column flexbox, so left/right are its cross axis) rather than changing
     // "toggle-slicer-visual"'s own alignment, since that root element is also the parent of the
     // unrelated landing-page/validation-message sections. "Justify" stretches titleWrapEl to the
@@ -153,7 +153,7 @@
         justify-content: space-between;
     }
 
-    // nameSettings.alignment: Center, Right or Justify - the group moves names and toggles within its
+    // layout.rowAlignment: Center, Right or Justify - the group moves names and toggles within its
     // own width, which needs the group (and so this wrapper) to span the frame's full width to have
     // any room to move into.
     // The margin reset matters: a cross-axis auto margin (is-title-align-left/right above) beats
@@ -188,7 +188,7 @@
     text-align: center;
 
     // Above: the title heads the group, so it lines up with the group's own edge rather than
-    // centring over it - that edge being whichever side titleSettings.alignment packs toward.
+    // centring over it - that edge being whichever side title.alignment packs toward.
     .toggle-slicer-wrap--stacked > & {
         text-align: left;
     }
@@ -205,8 +205,8 @@
 // The toggle rows. One shared CSS grid for every row (rows themselves are display: contents), so a
 // name column and a toggle column line up across the whole group regardless of each name's length.
 // DOM order decides which column comes first (render() swaps a row's name/cell elements for
-// nameSettings.position) - CSS order can't, since with display: contents rows it would reorder
-// every row's cells against each other. Indent (groupSettings.indent x each row's --toggle-level)
+// names.position) - CSS order can't, since with display: contents rows it would reorder
+// every row's cells against each other. Indent (layout.indent x each row's --toggle-level)
 // always goes on whichever cell comes first, so the whole row steps in:
 // - Names left: the name is indented; toggles stay aligned in their own column.
 // - Names right / hidden: the toggle cell is indented. Names right also pulls each name back left
@@ -242,7 +242,7 @@
         justify-content: safe end;
     }
 
-    // nameSettings.alignment: Justify - the flexible column takes up the slack, pushing names and
+    // layout.rowAlignment: Justify - the flexible column takes up the slack, pushing names and
     // toggles to opposite edges of the (stretched - see .is-group-stretched above) group.
     &.is-align-justify {
         grid-template-columns: minmax(0, 1fr) max-content;
@@ -793,6 +793,50 @@
     color: var(--toggle-label-color, #605e5c);
 }
 
+// "One toggle" / "Toggle group" tabs of the guide - an underline marks the selected tab.
+.toggle-slicer__landing-tabs {
+    display: flex;
+    gap: 4px;
+    border-bottom: 1px solid #e1e1e1;
+}
+
+.toggle-slicer__landing-tab {
+    margin: 0 0 -1px;
+    padding: 4px 8px;
+    font-family: inherit;
+    font-size: 11px;
+    color: var(--toggle-label-color, #605e5c);
+    background: none;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+
+    &[aria-selected="true"] {
+        color: #323130;
+        font-weight: 600;
+        border-bottom-color: #323130;
+    }
+
+    &:hover {
+        background-color: #f3f2f1;
+    }
+
+    &:focus-visible {
+        outline: 2px solid rgba(96, 94, 92, 0.6);
+        outline-offset: -2px;
+    }
+}
+
+.toggle-slicer__landing-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+
+    &[hidden] {
+        display: none;
+    }
+}
+
 .toggle-slicer__landing-code-wrap {
     position: relative;
     width: 100%;
@@ -913,6 +957,19 @@
     .toggle-slicer__landing-copy {
         background-color: ButtonFace;
         border: 1px solid ButtonText;
+    }
+
+    .toggle-slicer__landing-tabs {
+        border-bottom-color: CanvasText;
+    }
+
+    .toggle-slicer__landing-tab {
+        color: ButtonText;
+
+        &[aria-selected="true"] {
+            color: Highlight;
+            border-bottom-color: Highlight;
+        }
     }
 }
 

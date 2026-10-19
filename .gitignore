@@ -3,3 +3,4 @@ dist/
 .tmp/
 *.pbiviz
 version.json
+webpack.statistics.*.html
