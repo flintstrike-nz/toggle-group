@@ -811,18 +811,22 @@
     border-bottom: 2px solid transparent;
     cursor: pointer;
 
+    // Selection, hover and focus all use --toggle-label-color (the theme foreground under Power
+    // BI's high-contrast palette, see applyColors()) and no background fill, so they stay legible
+    // against whatever background the host supplies - the forced-colors block below only covers
+    // browser-level forced colours, not a host palette.
     &[aria-selected="true"] {
-        color: #323130;
+        color: var(--toggle-label-color, #605e5c);
         font-weight: 600;
-        border-bottom-color: #323130;
+        border-bottom-color: var(--toggle-label-color, #605e5c);
     }
 
     &:hover {
-        background-color: #f3f2f1;
+        text-decoration: underline;
     }
 
     &:focus-visible {
-        outline: 2px solid rgba(96, 94, 92, 0.6);
+        outline: 2px solid var(--toggle-label-color, #605e5c);
         outline-offset: -2px;
     }
 }
