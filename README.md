@@ -70,7 +70,7 @@ IF(
 
 Click it, and any visual using `[Toggle State]` updates immediately, the same as with a native slicer. A bookmark restores the state, and **View → Sync slicers** carries it between pages.
 
-For a single toggle you usually want **Toggle names → Show** off and **Title → Alignment → Center** (title centred over the toggle).
+For a single toggle you usually want **Toggle Label → Show** off and **Toggle Group Label → Alignment → Center** (the label centred over the toggle).
 
 ## Quick start: a toggle group
 
@@ -189,12 +189,12 @@ Switching Group enable Off then neutralises every bridged toggle while they keep
 
 ## Group behavior
 
-All in the **Group behavior** card, except Group enable, which comes from binding a field to the **Group enable** well.
+All in the **Group Behavior** card, except Group enable, which comes from binding a field to the **Group enable** well.
 
 | Rule | What it does |
 |---|---|
 | **Only one active** | Turning a toggle On turns every other toggle Off. Turning the active one Off leaves none On, except with the **Radio** control style, where (like a native radio group) the active option can't be clicked Off. If several were already On when the rule was switched on, the next click brings the group back to at most one. |
-| **Master switch** | Adds a master toggle at the top; the rest are indented by **Layout → Indent**. Master On/Off sets every toggle below it On/Off. It shows **On** when all are On, **Off** when none are, and **mixed** (a dash on the checkbox; a half-way knob on the toggle) when only some are. Clicking a mixed master turns them all On. It has no field of its own. Under Only one active, "all On" isn't allowed, so the master reads On when *any* toggle is On, and switching it On selects the first toggle. |
+| **Master switch** | Adds a master toggle at the top; the rest are indented by **Toggle Group → Indent**. Master On/Off sets every toggle below it On/Off. It shows **On** when all are On, **Off** when none are, and **mixed** (a dash on the checkbox; a half-way knob on the toggle) when only some are. Clicking a mixed master turns them all On. It has no field of its own. Under Only one active, "all On" isn't allowed, so the master reads On when *any* toggle is On, and switching it On selects the first toggle. |
 | **Group enable** | Bind an On/Off field to the **Group enable** well. It's drawn as a header toggle at the very top, and everything below it (master included) is indented. Switching it Off **disables** the toggles below it (greyed out, not clickable, out of the tab order) **without changing their state**. Because it's a real field, DAX can read it (see [Group enable column](#group-enable-column)). |
 
 Master switch and Group enable can be combined: Group enable at the top, master below it, toggles below that, each level indented. Under the **Radio** style, header rows (master, Group enable) are drawn as checkboxes, since they aren't one of the mutually exclusive options.
@@ -203,13 +203,14 @@ Master switch and Group enable can be combined: Group enable at the top, master 
 
 - **Single toggle or group** - one On/Off column is a toggle; up to 12 make a group.
 - **Dynamic field well** - drop in a column and a new empty slot appears below it.
-- **Three control styles** - sliding **Toggle**, square **Checkbox** or round **Radio**. All three share the same colors, outline, sizing and 3D effect.
-- **Group behavior** - Only one active, Master switch (with mixed state), and Group enable (disable without resetting).
-- **Border and background** - None, Flat, Embossed or Gutter, with color, width, corner radius, padding and optional fill.
-- **Aligned layout** - names and controls line up in columns, with names on either side and Left/Center/Right/Justify alignment.
+- **Three control styles** - sliding **Toggle**, square **Checkbox** or round **Radio**. All three share the same colors, border, sizing and 3D effect.
+- **Group Behavior** - Only one active, Master switch (with mixed state), and Group enable (disable without resetting).
+- **Style every layer** - the Toggle Group, its label, each Toggle, its Handle, the Toggle Labels and the State Labels each have their own Background, Border (None, Flat, Embossed or Sunken), Corner radius and Padding.
+- **State text inside the switch** - the On/Off text sits still while the handle slides over it, wiping it in and out.
+- **Aligned layout** - toggle labels and controls line up in columns, with labels on either side and Left/Center/Right/Justify alignment.
 - **Sync slicers**, **bookmarks** and **persisted state** - every toggle's state is a real filter.
 - **Keyboard accessible** - <kbd>Space</kbd>/<kbd>Enter</kbd> toggle, arrow keys and <kbd>Home</kbd>/<kbd>End</kbd> move between rows, and an exclusive radio group is a single Tab stop. Each control's accessible name includes its toggle name and current state, and its role matches what's drawn (switch, checkbox or radio).
-- **Clickable names** - clicking a toggle's name toggles it, like a native label.
+- **Clickable labels** - clicking a toggle's label toggles it, like a native label.
 - **High contrast** - theme colors replace custom colors when Power BI's high-contrast mode is active.
 - **Tooltip** and **context menu** per toggle.
 - **Respects Allow Interactions** - read-only state where interactivity is disabled.
@@ -218,9 +219,61 @@ Master switch and Group enable can be combined: Group enable at the top, master 
 
 ## Format pane options
 
-The Format pane is organised from the controls outward: what each toggle looks like, its text, how the group behaves, where it sits, and the box around it. Options that don't apply to your current choices are hidden.
+The Format pane works from the outside in, one card per layer:
 
-### Controls
+```
+Toggle Group            the box around everything
+ ├─ Toggle Group Label  its heading
+ ├─ Toggle              the switch, checkbox or radio
+ │   └─ Handle          what slides (or sits) inside the toggle
+ ├─ Toggle Label        each row's name
+ ├─ State Label         the On/Off text
+ └─ Group Behavior      the rules (no box)
+```
+
+Power BI also gives every visual its own **General → Title** and **General → Background**. Those are separate: the Toggle Group Label and the Toggle Group's Background are drawn by this visual.
+
+### The same four settings on every layer
+
+Every layer except Group Behavior has these (some are hidden when they don't apply):
+
+| Group | Property | Description |
+|---|---|---|
+| Background | Show / Color | Fill behind the layer. Off by default, so what is behind it shows through. (The Toggle's fill is its **On color** and **Off color**; the Handle's is its **Color**, always on.) |
+| Border | Style | **None**, **Flat** (a plain line), **Embossed** (raised) or **Sunken** (recessed) |
+| Border | Color / Width | Shown once a style is chosen |
+| Corners & padding | Corner radius | Roundness of the corners. Pixels for the group and the text layers; a percentage of the toggle's height for the Toggle and Handle (50 is fully round) |
+| Corners & padding | Padding | Space between the layer's border and what is inside it |
+
+### Toggle Group
+
+The box around the label and every row, and how the rows are laid out inside it.
+
+| Group | Property | Description | Default |
+|---|---|---|---|
+| Layout | Row alignment | Pack the rows to the Left, Center or Right, or Justify labels and toggles to opposite edges. With a Left or Right Toggle Group Label, the rows align within the space beside it, so the label's own Alignment then has no spare room to act on | Left |
+| Layout | Row spacing | Space in pixels between rows | 8px |
+| Layout | Indent | Pixels each level is indented below a master switch or Group enable toggle | 16px |
+| Layout | Vertical alignment | Top, Middle or Bottom of the visual | Middle |
+| Background, Border, Corners & padding | | As above | No background or border; 4px radius; 8px padding |
+
+### Toggle Group Label
+
+A heading this visual draws itself. Turn the card's **Show** toggle off to hide it.
+
+| Group | Property | Description | Default |
+|---|---|---|---|
+| (header) | Show | Show the label | On |
+| Text | Text | Label text. Shows "Toggle group" until you set your own | blank |
+| Text | Position | Above the group, or to its Left or Right | Above |
+| Text | Alignment | Left, Center, Right, or Justify (label and group to opposite ends). Center with the label Above and **Toggle Label → Show** off gives the classic single-toggle look | Left |
+| Text | Spacing | Space in pixels between the label and the group | 8px |
+| Text | Font / Font color | Typography of the label | Segoe UI, 14px, bold / Dark grey |
+| Background, Border, Corners & padding | | As above | No background or border; 4px radius; 0 padding |
+
+### Toggle
+
+The switch, checkbox or radio button itself.
 
 | Group | Property | Description | Default |
 |---|---|---|---|
@@ -229,76 +282,59 @@ The Format pane is organised from the controls outward: what each toggle looks l
 | Colors | On color | Fill when On | Report theme's first data color, until you pick your own |
 | Colors | Off color | Fill when Off | Grey |
 | Size | Size mode | Responsive (scale with the visual's height, shared across rows) or Fixed | Responsive |
-| Size | Minimum / Maximum height | Bounds of each control's height in Responsive mode | 16px / 22px |
-| Size | Height | Each control's exact height in Fixed mode | 22px |
-| Outline (toggle) | Color / Width | A ring around each control's track | Off / Dark grey / 2px |
+| Size | Minimum / Maximum height | Bounds of each toggle's height in Responsive mode | 16px / 22px |
+| Size | Height | Each toggle's exact height in Fixed mode | 22px |
+| Border | Style, Color, Width | As above | None; dark grey; 2px |
+| Corners & padding | Corner radius | Percentage of the toggle's height. Until you set one, the pane shows the style's own default: 50 (a pill) for Toggle, 20 (a rounded square) for Checkbox. A Radio is always a circle, so it's hidden | 50 |
+| Corners & padding | Padding | Gap between the toggle's edge and its handle | 2px |
 
-Width always follows height: 2:1 for the Toggle style, 1:1 for Checkbox and Radio.
+Width always follows height: 2:1 for the Toggle style (wider if the State Label sits inside it), 1:1 for Checkbox and Radio.
 
-### State labels
+### Handle
 
-The On/Off text beside each control. Turn the card's **Show** toggle on to display it.
+What sits inside the toggle: the sliding knob (Toggle), the dot (Radio) or the tick (Checkbox).
 
-| Property | Description | Default |
-|---|---|---|
-| Show | Show the On/Off text next to each control | Off |
-| On text / Off text | Text shown when a toggle is On / Off | "On" / "Off" |
-| Position | Left or Right of the control, Above it, or Inside the switch opposite the knob (the track widens to fit the longer label; toggle style only, checkboxes and radios show it on the right) | Left |
-| Spacing | Space in pixels between a control and its text (hidden for Inside switch) | 8px |
-| Font / Font color | Typography of the text | Arial, 12px, bold / Dark blue |
+| Group | Property | Description | Default |
+|---|---|---|---|
+| Color | Color | The handle's fill (the tick's color for a Checkbox) | White |
+| Border | Style, Color, Width | As above. Not used by a Checkbox's tick | None; dark grey; 1px |
+| Corners & padding | Corner radius | Percentage of the handle's size (50 is a circle). Not used by a Checkbox | 50 |
+| Corners & padding | Padding | Gap around the dot or tick inside the toggle, as a percentage of the toggle's height so it scales with it. Not used by the Toggle style's knob, which is sized by the toggle's padding | 18% |
 
-### Toggle names
+### Toggle Label
 
-Each row's name is its field's display name; rename it in the well.
+Each row's name, which is its field's display name. Rename it in the Toggles well. Turn the card's **Show** toggle off to hide the names.
 
-| Property | Description | Default |
-|---|---|---|
-| Show | Show each toggle's name | On |
-| Position | Name to the Left or Right of its control | Left |
-| Spacing | Space in pixels between a name and its control | 8px |
-| Font / Font color | Typography of the names | Segoe UI, 12px / Near-black |
+| Group | Property | Description | Default |
+|---|---|---|---|
+| (header) | Show | Show each toggle's label | On |
+| Text | Position | Label to the Left or Right of its toggle | Left |
+| Text | Spacing | Space in pixels between a label and its toggle | 8px |
+| Text | Font / Font color | Typography of the labels | Segoe UI, 12px / Near-black |
+| Background, Border, Corners & padding | | As above | No background or border; 4px radius; 0 padding |
 
-### Group behavior
+### State Label
+
+The On/Off text. Turn the card's **Show** toggle on to display it.
+
+| Group | Property | Description | Default |
+|---|---|---|---|
+| (header) | Show | Show the On/Off text | Off |
+| Text | On text / Off text | Text shown when a toggle is On / Off | "On" / "Off" |
+| Text | Position | **Inside switch**, Left or Right of the toggle, or Above it. Inside applies to the Toggle style only; checkboxes and radios show it on the right | Inside switch |
+| Text | Spacing | Space in pixels between a toggle and its text (hidden for Inside switch) | 8px |
+| Text | Font / Font color | Typography of the text | Arial, 10px, regular / Dark blue |
+| Background, Border, Corners & padding | | As above | No background or border; 4px radius; 4px padding |
+
+**Inside switch:** the text of each state stays where it is, centered horizontally and vertically in the part of the toggle the handle isn't covering, and the handle slides over it. As the handle moves, it wipes the old text out and uncovers the new text, and the toggle never changes width when clicked. The Off text uses the State Label's font color; the On text uses the Handle's color (white by default) so it stays readable on the On color. The toggle is as wide as it needs to be to fit the longer of the two texts.
+
+### Group Behavior
 
 | Property | Description | Default |
 |---|---|---|
 | Only one active | Turning a toggle On turns every other toggle Off | Off |
 | Master switch | Add a master toggle at the top that turns every toggle On/Off | Off |
 | Master label | Name shown next to the master switch (only while it is on) | "All" |
-
-### Layout
-
-| Group | Property | Description | Default |
-|---|---|---|---|
-| Rows | Row alignment | Pack names and controls to the Left, Center or Right, or Justify them to opposite edges. With an Inline title, the rows align within the space beside the title, so Title → Alignment then has no spare room to act on | Left |
-| Rows | Row spacing | Space in pixels between rows | 8px |
-| Rows | Indent | Pixels each level is indented below a master switch or Group enable toggle | 16px |
-| Placement | Vertical alignment | Top, Middle or Bottom of the visual | Middle |
-| Placement | Padding | Space between the border and its contents | 8px |
-
-### Title
-
-A heading this visual draws itself, separate from Power BI's own General → Title.
-
-| Property | Description | Default |
-|---|---|---|
-| Show | Show the title | On |
-| Text | Title text. Shows "Toggle group" until you set your own | blank |
-| Position | Above the group, or to its Left or Right | Above |
-| Alignment | Left, Center, Right, or Justify (title and group to opposite ends). Center with the title Above and **Toggle names → Show** off gives the classic single-toggle look | Left |
-| Spacing | Space in pixels between the title and the group | 8px |
-| Font / Font color | Typography of the title | Segoe UI, 14px, bold / Dark grey |
-
-### Border & background
-
-The box drawn around the whole group, title included.
-
-| Group | Property | Description | Default |
-|---|---|---|---|
-| Border | Style | None, Flat (a plain line), Embossed (raised) or Gutter (recessed) | None |
-| Border | Color / Width | Shown once a style is chosen | Light grey / 1px |
-| Border | Corner radius | Roundness of the corners | 4px |
-| Background (toggle) | Color | Fill inside the border. Separate from Power BI's own General → Background | Off / White |
 
 The font defaults are static: Power BI gives custom visuals no way to read the report theme's typography (unlike color, where On color follows the theme).
 
