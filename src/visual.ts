@@ -33,40 +33,42 @@ const OFF_VALUES = new Set(["off", "false", "0"]);
 /**
  * Starter DAX shown (with Copy buttons) on the landing page, matching README's own documented
  * examples exactly. DAX identifiers aren't localized - like the on/off label values themselves,
- * they're literal code to paste verbatim, not natural-language UI text.
+ * they're literal code to paste verbatim, not natural-language UI text. The names are deliberately
+ * generic placeholders ("Toggle Table", "Toggle 1", "Group Enable") so it's obvious what is a
+ * name to replace and what each object is for.
  *
  * A single toggle is a one-column table. A group is one table with a column per toggle: each
- * column's name ("Show targets") is what the visual shows as that toggle's name, and each column
- * is its own field in the Toggles well. CROSSJOIN gives the group table every On/Off combination,
- * which is what lets each column be filtered independently - filtering "Show targets" to On still
- * leaves both values of every other column. The measures compare against "On" (or "Off" for Group
- * enable) rather than using SELECTEDVALUE's fallback argument, so an unfiltered column - first
- * load, before any click - reads as Off (or enabled) exactly as readStatesFromFilters() renders it.
+ * column's name ("Toggle 1") is what the visual shows as that toggle's name, and each column is its
+ * own field in the Toggles well. CROSSJOIN gives the group table every On/Off combination, which is
+ * what lets each column be filtered independently - filtering "Toggle 1" to On still leaves both
+ * values of every other column. The measures compare against "On" (or "Off" for Group enable)
+ * rather than using SELECTEDVALUE's fallback argument, so an unfiltered column - first load, before
+ * any click - reads as Off (or enabled) exactly as readStatesFromFilters() renders it.
  */
-const SINGLE_TABLE_DAX = `Targets Toggle =
-DATATABLE("Show targets", STRING, {{"On"}, {"Off"}})`;
-const SINGLE_MEASURE_DAX = `Show Targets State =
+const SINGLE_TABLE_DAX = `Toggle Table =
+DATATABLE("Toggle", STRING, {{"On"}, {"Off"}})`;
+const SINGLE_MEASURE_DAX = `Toggle State =
 IF(
-    SELECTEDVALUE('Targets Toggle'[Show targets]) = "On",
+    SELECTEDVALUE('Toggle Table'[Toggle]) = "On",
     1,
     0
 )`;
-const TOGGLE_TABLE_DAX = `Display Options =
+const TOGGLE_TABLE_DAX = `Toggle Group Table =
 CROSSJOIN(
-    DATATABLE("Show targets", STRING, {{"On"}, {"Off"}}),
-    DATATABLE("Show forecast", STRING, {{"On"}, {"Off"}}),
-    DATATABLE("Include returns", STRING, {{"On"}, {"Off"}})
+    DATATABLE("Toggle 1", STRING, {{"On"}, {"Off"}}),
+    DATATABLE("Toggle 2", STRING, {{"On"}, {"Off"}}),
+    DATATABLE("Toggle 3", STRING, {{"On"}, {"Off"}})
 )`;
-const TOGGLE_MEASURE_DAX = `Show Targets State =
+const TOGGLE_MEASURE_DAX = `Toggle 1 State =
 IF(
-    SELECTEDVALUE('Display Options'[Show targets]) = "On",
+    SELECTEDVALUE('Toggle Group Table'[Toggle 1]) = "On",
     1,
     0
 )`;
-const GROUP_GATE_DAX = `Show Targets Active =
+const GROUP_GATE_DAX = `Toggle 1 Active =
 IF(
-    SELECTEDVALUE('Display Options'[Options enabled]) <> "Off",
-    [Show Targets State],
+    SELECTEDVALUE('Toggle Group Table'[Group Enable]) <> "Off",
+    [Toggle 1 State],
     0
 )`;
 

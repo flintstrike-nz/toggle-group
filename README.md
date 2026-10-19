@@ -29,11 +29,11 @@ Add **Toggle Slicer** from AppSource (Visualizations pane → **···** → **G
 
 ### 2. Create a table with one column
 
-**Modeling → New table**. The column's name becomes the toggle's name in the visual, so give it a readable, sentence-case name:
+**Modeling → New table**. The column's name becomes the toggle's name in the visual, so rename `Toggle` to something readable (sentence case works well). `Toggle Table` and `Toggle` are placeholders; use your own names:
 
 ```dax
-Targets Toggle =
-DATATABLE("Show targets", STRING, {{"On"}, {"Off"}})
+Toggle Table =
+DATATABLE("Toggle", STRING, {{"On"}, {"Off"}})
 ```
 
 ### 3. Add a measure that reads it
@@ -41,22 +41,22 @@ DATATABLE("Show targets", STRING, {{"On"}, {"Off"}})
 **Modeling → New measure**:
 
 ```dax
-Show Targets State =
+Toggle State =
 IF(
-    SELECTEDVALUE('Targets Toggle'[Show targets]) = "On",
+    SELECTEDVALUE('Toggle Table'[Toggle]) = "On",
     1,
     0
 )
 ```
 
-Use `[Show Targets State]` anywhere else in the model, for example:
+Use `[Toggle State]` anywhere else in the model, for example:
 
 ```dax
-Sales or Targets =
+My Measure =
 IF(
-    [Show Targets State] = 1,
-    [Total Targets],
-    [Total Sales]
+    [Toggle State] = 1,
+    [Measure When On],
+    [Measure When Off]
 )
 ```
 
@@ -65,10 +65,10 @@ IF(
 ### 4. Add the visual and bind the field
 
 1. Drag the **Toggle Slicer** icon onto the report canvas.
-2. Drag `'Targets Toggle'[Show targets]` into the **Toggles** field well. The toggle appears straight away.
+2. Drag `'Toggle Table'[Toggle]` into the **Toggles** field well. The toggle appears straight away.
 3. To rename it for this visual only, use **Rename for this visual** on the field in the well.
 
-Click it, and any visual using `[Show Targets State]` updates immediately, the same as with a native slicer. A bookmark restores the state, and **View → Sync slicers** carries it between pages.
+Click it, and any visual using `[Toggle State]` updates immediately, the same as with a native slicer. A bookmark restores the state, and **View → Sync slicers** carries it between pages.
 
 For a single toggle you usually want **Toggle names → Show** off and **Title → Alignment → Center** (title centred over the toggle).
 
@@ -77,25 +77,25 @@ For a single toggle you usually want **Toggle names → Show** off and **Title �
 A group is **one disconnected table** with **one column per toggle**. Build it with `CROSSJOIN` so it holds every On/Off combination:
 
 ```dax
-Display Options =
+Toggle Group Table =
 CROSSJOIN(
-    DATATABLE("Show targets", STRING, {{"On"}, {"Off"}}),
-    DATATABLE("Show forecast", STRING, {{"On"}, {"Off"}}),
-    DATATABLE("Include returns", STRING, {{"On"}, {"Off"}})
+    DATATABLE("Toggle 1", STRING, {{"On"}, {"Off"}}),
+    DATATABLE("Toggle 2", STRING, {{"On"}, {"Off"}}),
+    DATATABLE("Toggle 3", STRING, {{"On"}, {"Off"}})
 )
 ```
 
-`CROSSJOIN` gives the table every combination (2 × 2 × 2 = 8 rows here). That's what lets each column be switched independently: filtering *Show targets* to On still leaves both values of every other column. To add a toggle later, add another `DATATABLE(...)` line.
+`CROSSJOIN` gives the table every combination (2 × 2 × 2 = 8 rows here). That's what lets each column be switched independently: filtering *Toggle 1* to On still leaves both values of every other column. To add a toggle later, add another `DATATABLE(...)` line.
 
-Add a measure per toggle, exactly as above (`SELECTEDVALUE('Display Options'[Show targets]) = "On"`), then drag the table's columns into **Toggles** one by one, up to 12. A new empty slot appears below each one. Rows render in the order they sit in the well; drag within the well to reorder. To make the group behave as one, see [Group behavior](#group-behavior).
+Add a measure per toggle, exactly as above (`SELECTEDVALUE('Toggle Group Table'[Toggle 1]) = "On"`), then drag the table's columns into **Toggles** one by one, up to 12. A new empty slot appears below each one. Rows render in the order they sit in the well; drag within the well to reorder. To make the group behave as one, see [Group behavior](#group-behavior).
 
 If you see a validation message instead of toggles, see [Troubleshooting](#troubleshooting).
 
 ## How it works
 
-Each column in the **Toggles** well is one toggle. Clicking a toggle writes a real slicer-style filter on that column (the same `general.filter` mechanism a native slicer uses). The visual keeps **one basic filter per column**, `'Display Options'[Show targets] IN {"On"}` or `IN {"Off"}`, and always writes the whole group's set at once. So:
+Each column in the **Toggles** well is one toggle. Clicking a toggle writes a real slicer-style filter on that column (the same `general.filter` mechanism a native slicer uses). The visual keeps **one basic filter per column**, `'Toggle Group Table'[Toggle 1] IN {"On"}` or `IN {"Off"}`, and always writes the whole group's set at once. So:
 
-- `SELECTEDVALUE('Display Options'[Show targets])`, and anything built on it, reads each toggle exactly like a slicer.
+- `SELECTEDVALUE('Toggle Group Table'[Toggle 1])`, and anything built on it, reads each toggle exactly like a slicer.
 - State persists across saves, survives bookmarks, and can be synced across pages.
 - A toggle that's Off applies its **Off** value rather than clearing its filter. That keeps every column filtered once the group has been used, which the bridge pattern below relies on.
 
@@ -117,68 +117,70 @@ One group table plus one measure per toggle, exactly as in the quick starts. The
 
 ### Pattern B: bridge-driven (filter real data through relationships)
 
-Use this when the toggles should filter a dimension directly, e.g. "Show products with a target only". A table can only have one active path to a dimension, so the whole group shares **one bridge**, keyed on the combination of toggle states. First, give the group table a key column (**Modeling → New column** on `Display Options`):
+Use this when the toggles should filter a dimension directly, e.g. "only the rows of your dimension that match Toggle 1". A table can only have one active path to a dimension, so the whole group shares **one bridge**, keyed on the combination of toggle states. First, give the group table a key column (**Modeling → New column** on `Toggle Group Table`):
 
 ```dax
 Option Key =
-'Display Options'[Show targets] & "|" & 'Display Options'[Show forecast]
+'Toggle Group Table'[Toggle 1] & "|" & 'Toggle Group Table'[Toggle 2]
 ```
 
 Then the bridge lists, for every combination, the members that pass **all** of its On toggles. An Off toggle doesn't restrict anything:
 
 ```dax
-Display Options Bridge =
+Toggle Group Bridge =
 SELECTCOLUMNS(
     GENERATE(
-        'Display Options',
+        'Toggle Group Table',
         FILTER(
-            'Product',
-            ('Display Options'[Show targets] = "Off" || 'Product'[Has Target])
-                && ('Display Options'[Show forecast] = "Off" || 'Product'[Has Forecast])
+            'Dimension Table',
+            ('Toggle Group Table'[Toggle 1] = "Off" || 'Dimension Table'[Matches Toggle 1])
+                && ('Toggle Group Table'[Toggle 2] = "Off" || 'Dimension Table'[Matches Toggle 2])
         )
     ),
-    "Option Key", 'Display Options'[Option Key],
-    "Product Key", 'Product'[Product Key]
+    "Option Key", 'Toggle Group Table'[Option Key],
+    "Dimension Key", 'Dimension Table'[Dimension Key]
 )
 ```
 
 Relationships:
 
-- `'Display Options'[Option Key]` (one) → `'Display Options Bridge'[Option Key]` (many), single direction.
-- `'Display Options Bridge'[Product Key]` (many) → `'Product'[Product Key]` (one), **both directions**, so the filter can flow from the bridge up to the dimension.
+- `'Toggle Group Table'[Option Key]` (one) → `'Toggle Group Bridge'[Option Key]` (many), single direction.
+- `'Toggle Group Bridge'[Dimension Key]` (many) → `'Dimension Table'[Dimension Key]` (one), **both directions**, so the filter can flow from the bridge up to the dimension.
 
 On toggles **intersect** (AND): each one narrows the dimension further, and Off toggles leave it untouched. Combined with **Only one active**, that gives a "pick one lens" control: exactly one subset applies at a time, or none. Before anyone clicks, nothing is filtered, so every combination (and every member) is in play.
 
-The bridge has up to (combinations × members) rows, e.g. 8 × 2,000 products = 16,000 rows for three toggles. Keep bridged groups to a handful of toggles; for more, use Pattern A.
+The bridge has up to (combinations × members) rows, e.g. 8 × 2,000 dimension rows = 16,000 rows for three toggles. Keep bridged groups to a handful of toggles; for more, use Pattern A.
 
 ### Group enable column
 
-Add it to the **same** `CROSSJOIN` as the toggles:
+**What it's for.** Group enable is an on/off switch for the whole group. Switching it Off greys out every toggle below it, but it deliberately leaves each toggle's state and filter alone, so they remember their settings and come back exactly as they were when it's switched On again. The visual can't know what your measures do with those toggles, though, so on its own your report's numbers would keep following the greyed-out toggles. If you want switching Group enable Off to also switch their *effects* off, make your measures check it, as below. If you don't need that, skip Group enable entirely.
+
+Add the column to the **same** `CROSSJOIN` as the toggles:
 
 ```dax
-    DATATABLE("Options enabled", STRING, {{"On"}, {"Off"}}),
+    DATATABLE("Group Enable", STRING, {{"On"}, {"Off"}}),
 ```
 
 Group enable renders **On** until someone first switches it Off, so a new group isn't born disabled. Its test is therefore `<> "Off"`, so that unfiltered reads as enabled. Gate each toggle's measure on it:
 
 ```dax
-Show Targets Active =
+Toggle 1 Active =
 IF(
-    SELECTEDVALUE('Display Options'[Options enabled]) <> "Off",
-    [Show Targets State],
+    SELECTEDVALUE('Toggle Group Table'[Group Enable]) <> "Off",
+    [Toggle 1 State],
     0
 )
 ```
 
-With **bridges**, gate in the bridge instead. Add `[Options enabled]` to `Option Key`, and treat "Off" as "no toggle restricts anything":
+With **bridges**, gate in the bridge instead. Add `[Group Enable]` to `Option Key`, and treat "Off" as "no toggle restricts anything":
 
 ```dax
 FILTER(
-    'Product',
-    'Display Options'[Options enabled] = "Off"
+    'Dimension Table',
+    'Toggle Group Table'[Group Enable] = "Off"
         || (
-            ('Display Options'[Show targets] = "Off" || 'Product'[Has Target])
-                && ('Display Options'[Show forecast] = "Off" || 'Product'[Has Forecast])
+            ('Toggle Group Table'[Toggle 1] = "Off" || 'Dimension Table'[Matches Toggle 1])
+                && ('Toggle Group Table'[Toggle 2] = "Off" || 'Dimension Table'[Matches Toggle 2])
         )
 )
 ```
