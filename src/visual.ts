@@ -19,7 +19,7 @@ import DataViewCategoryColumn = powerbi.DataViewCategoryColumn;
 import ILocalizationManager = powerbi.extensibility.ILocalizationManager;
 import ITooltipService = powerbi.extensibility.ITooltipService;
 
-import { VisualFormattingSettingsModel } from "./settings";
+import { VisualFormattingSettingsModel, BoxSlices } from "./settings";
 
 /**
  * Matches each bound On/Off field's category values. Accepts a few common conventions for the
@@ -33,40 +33,42 @@ const OFF_VALUES = new Set(["off", "false", "0"]);
 /**
  * Starter DAX shown (with Copy buttons) on the landing page, matching README's own documented
  * examples exactly. DAX identifiers aren't localized - like the on/off label values themselves,
- * they're literal code to paste verbatim, not natural-language UI text.
+ * they're literal code to paste verbatim, not natural-language UI text. The names are deliberately
+ * generic placeholders ("Toggle Table", "Toggle 1", "Group Enable") so it's obvious what is a
+ * name to replace and what each object is for.
  *
  * A single toggle is a one-column table. A group is one table with a column per toggle: each
- * column's name ("Show targets") is what the visual shows as that toggle's name, and each column
- * is its own field in the Toggles well. CROSSJOIN gives the group table every On/Off combination,
- * which is what lets each column be filtered independently - filtering "Show targets" to On still
- * leaves both values of every other column. The measures compare against "On" (or "Off" for Group
- * enable) rather than using SELECTEDVALUE's fallback argument, so an unfiltered column - first
- * load, before any click - reads as Off (or enabled) exactly as readStatesFromFilters() renders it.
+ * column's name ("Toggle 1") is what the visual shows as that toggle's name, and each column is its
+ * own field in the Toggles well. CROSSJOIN gives the group table every On/Off combination, which is
+ * what lets each column be filtered independently - filtering "Toggle 1" to On still leaves both
+ * values of every other column. The measures compare against "On" (or "Off" for Group enable)
+ * rather than using SELECTEDVALUE's fallback argument, so an unfiltered column - first load, before
+ * any click - reads as Off (or enabled) exactly as readStatesFromFilters() renders it.
  */
-const SINGLE_TABLE_DAX = `Targets Toggle =
-DATATABLE("Show targets", STRING, {{"On"}, {"Off"}})`;
-const SINGLE_MEASURE_DAX = `Show Targets State =
+const SINGLE_TABLE_DAX = `Toggle Table =
+DATATABLE("Toggle", STRING, {{"On"}, {"Off"}})`;
+const SINGLE_MEASURE_DAX = `Toggle State =
 IF(
-    SELECTEDVALUE('Targets Toggle'[Show targets]) = "On",
+    SELECTEDVALUE('Toggle Table'[Toggle]) = "On",
     1,
     0
 )`;
-const TOGGLE_TABLE_DAX = `Display Options =
+const TOGGLE_TABLE_DAX = `Toggle Group Table =
 CROSSJOIN(
-    DATATABLE("Show targets", STRING, {{"On"}, {"Off"}}),
-    DATATABLE("Show forecast", STRING, {{"On"}, {"Off"}}),
-    DATATABLE("Include returns", STRING, {{"On"}, {"Off"}})
+    DATATABLE("Toggle 1", STRING, {{"On"}, {"Off"}}),
+    DATATABLE("Toggle 2", STRING, {{"On"}, {"Off"}}),
+    DATATABLE("Toggle 3", STRING, {{"On"}, {"Off"}})
 )`;
-const TOGGLE_MEASURE_DAX = `Show Targets State =
+const TOGGLE_MEASURE_DAX = `Toggle 1 State =
 IF(
-    SELECTEDVALUE('Display Options'[Show targets]) = "On",
+    SELECTEDVALUE('Toggle Group Table'[Toggle 1]) = "On",
     1,
     0
 )`;
-const GROUP_GATE_DAX = `Show Targets Active =
+const GROUP_GATE_DAX = `Toggle 1 Active =
 IF(
-    SELECTEDVALUE('Display Options'[Options enabled]) <> "Off",
-    [Show Targets State],
+    SELECTEDVALUE('Toggle Group Table'[Group Enable]) <> "Off",
+    [Toggle 1 State],
     0
 )`;
 
@@ -101,9 +103,18 @@ interface RowElements {
     cellEl: HTMLElement;
     offLabelEl: HTMLElement;
     onLabelEl: HTMLElement;
+    // The hidden sizers that give an inside label its width (see .toggle-slicer__inner in visual.less).
     innerOffEl: HTMLElement;
     innerOnEl: HTMLElement;
+    // The visible inside labels: stationary text the handle slides over, one per state, each clipped
+    // to the side of the handle it belongs to (see .toggle-slicer__layer).
+    layerOffEl: HTMLElement;
+    layerOnEl: HTMLElement;
+    layerOffLabelEl: HTMLElement;
+    layerOnLabelEl: HTMLElement;
     switchEl: HTMLElement;
+    trackEl: HTMLElement;
+    knobEl: HTMLElement;
 }
 
 // Gives each Visual instance's title element a unique id (a report page can have more than one of
@@ -133,7 +144,7 @@ export class Visual implements IVisual {
 
     private items: GroupItem[] = [];
     private rows: RowElements[] = [];
-    // Whether title.text / behavior.masterLabel have ever been explicitly set by a
+    // Whether groupLabel.text / behavior.masterLabel have ever been explicitly set by a
     // report author (checked against the raw dataView object, not the populated settings model,
     // which can't tell "never touched" apart from "explicitly cleared to blank") - computed once
     // per update() since render() needs them too.
@@ -226,6 +237,25 @@ export class Visual implements IVisual {
         const trackEl = document.createElement("div");
         trackEl.className = "toggle-slicer__track";
 
+        // Label position "Inside switch": the text of each state is stationary, in its own layer
+        // *under* the handle, and each layer is clipped to the side of the handle it belongs to
+        // (see .toggle-slicer__layer in visual.less) - so as the handle slides over a label, that
+        // label is wiped out or revealed in step with it, rather than the text moving. Decorative,
+        // since the switch's aria-label names both states.
+        const makeLayer = (state: "on" | "off"): { layerEl: HTMLElement; labelEl: HTMLElement } => {
+            const layerEl = document.createElement("div");
+            layerEl.className = `toggle-slicer__layer toggle-slicer__layer--${state}`;
+            layerEl.setAttribute("aria-hidden", "true");
+            const labelEl = document.createElement("span");
+            labelEl.className = "toggle-slicer__inner-label";
+            layerEl.appendChild(labelEl);
+            return { layerEl, labelEl };
+        };
+        const layerOn = makeLayer("on");
+        const layerOff = makeLayer("off");
+        trackEl.appendChild(layerOn.layerEl);
+        trackEl.appendChild(layerOff.layerEl);
+
         // Toggle skin's sliding knob, and the radio skin's centre dot - see visual.less.
         const knobEl = document.createElement("div");
         knobEl.className = "toggle-slicer__knob";
@@ -239,9 +269,9 @@ export class Visual implements IVisual {
 
         switchEl.appendChild(trackEl);
 
-        // Label position "Inside switch": both states' text overlaid in one grid cell so the track
-        // is sized to the wider of the two and doesn't change width when clicked - visual.less
-        // shows only the current one. Decorative, since the switch's aria-label names both states.
+        // The inside labels' hidden sizer: both states' text (with the same padding and border as the
+        // visible labels) overlaid in one grid cell, so the track is as wide as the wider of the two
+        // plus the handle, and never changes width when clicked.
         const innerEl = document.createElement("span");
         innerEl.className = "toggle-slicer__inner";
         innerEl.setAttribute("aria-hidden", "true");
@@ -273,7 +303,12 @@ export class Visual implements IVisual {
         switchEl.addEventListener("pointermove", (event: PointerEvent) => this.moveTooltip(event));
         switchEl.addEventListener("pointerleave", (event: PointerEvent) => this.hideTooltip(event));
 
-        return { rowEl, nameEl, cellEl, offLabelEl, onLabelEl, innerOffEl, innerOnEl, switchEl };
+        return {
+            rowEl, nameEl, cellEl, offLabelEl, onLabelEl, innerOffEl, innerOnEl,
+            layerOffEl: layerOff.layerEl, layerOnEl: layerOn.layerEl,
+            layerOffLabelEl: layerOff.labelEl, layerOnLabelEl: layerOn.labelEl,
+            switchEl, trackEl, knobEl
+        };
     }
 
     /** Grows/shrinks the row pool to match this.items, reusing existing rows so focus survives a re-render. */
@@ -654,10 +689,12 @@ export class Visual implements IVisual {
             const dataView = options.dataViews && options.dataViews[0];
             this.formattingSettings = this.formattingSettingsService.populateFormattingSettingsModel(VisualFormattingSettingsModel, dataView);
             const objects = dataView && dataView.metadata && dataView.metadata.objects;
-            const titleObjects = objects && objects["title"];
+            const groupLabelObjects = objects && objects["groupLabel"];
             const behaviorObjects = objects && objects["behavior"];
-            this.hasCustomTitleText = !!titleObjects && titleObjects["text"] !== undefined;
+            const toggleObjects = objects && objects["toggleControl"];
+            this.hasCustomTitleText = !!groupLabelObjects && groupLabelObjects["text"] !== undefined;
             this.hasCustomMasterLabel = !!behaviorObjects && behaviorObjects["masterLabel"] !== undefined;
+            this.formattingSettings.toggleCard.radiusIsCustom = !!toggleObjects && toggleObjects["cornerRadius"] !== undefined;
 
             this.applyColors(dataView);
             this.applySize();
@@ -1024,7 +1061,7 @@ export class Visual implements IVisual {
         // rather than stepping across the radiogroup's boundary into controls outside it.
         const current = this.items[index];
         const isRadioGroup = this.formattingSettings.behaviorCard.onlyOneActive.value
-            && this.formattingSettings.controlsCard.controlStyle.value.value === "radio";
+            && this.formattingSettings.toggleCard.controlStyle.value.value === "radio";
         const sameZone = (item: GroupItem) => !isRadioGroup || (item.kind === "toggle") === (current.kind === "toggle");
         const focusable = this.items
             .map((item, itemIndex) => ({ item, itemIndex }))
@@ -1084,40 +1121,62 @@ export class Visual implements IVisual {
     }
 
     /**
-     * Applies track/knob/label colours, substituting the theme's high-contrast palette when active.
-     * Outside high contrast, the On colour itself follows the report theme's first data colour
-     * until a report author picks their own - detected by checking the raw dataView object rather
-     * than the populated settings model, since the latter always has *some* value (the settings.ts
-     * default) and can't tell "never touched" apart from "explicitly set to the same value as the
-     * default".
+     * Applies the toggle's fill colours and border, and the handle's colour, border and shape, as CSS
+     * custom properties, substituting the theme's high-contrast palette when active. Outside high
+     * contrast, the On colour itself follows the report theme's first data colour until a report
+     * author picks their own - detected by checking the raw dataView object rather than the
+     * populated settings model, since the latter always has *some* value (the settings.ts default)
+     * and can't tell "never touched" apart from "explicitly set to the same value as the default".
+     * The same trick decides whether the toggle's corner radius is the chosen style's own default or
+     * the report author's (see ToggleCardSettings.radiusIsCustom).
      */
     private applyColors(dataView: powerbi.DataView | undefined): void {
-        const card = this.formattingSettings.controlsCard;
+        const toggle = this.formattingSettings.toggleCard;
+        const handle = this.formattingSettings.handleCard;
         const palette = this.host.colorPalette;
+        const hc = palette.isHighContrast;
+        const root = this.target.style;
+        const toggleBox = toggle.box;
+        const handleBox = handle.box;
 
-        if (palette.isHighContrast) {
-            this.target.style.setProperty("--toggle-off-color", palette.background.value);
-            this.target.style.setProperty("--toggle-on-color", palette.background.value);
-            this.target.style.setProperty("--toggle-track-border-color", palette.foreground.value);
-            this.target.style.setProperty("--toggle-track-border-color-on", palette.foregroundSelected.value);
-            this.target.style.setProperty("--toggle-knob-color", palette.foreground.value);
-            this.target.style.setProperty("--toggle-knob-color-on", palette.foregroundSelected.value);
-            this.target.style.setProperty("--toggle-label-color", palette.foreground.value);
-            this.target.style.setProperty("--toggle-border-width", `${card.outlineWidth.value}px`);
+        // A border is only drawn (and reserved in the handle's sizing) once a style is chosen. High
+        // contrast always draws one, so the toggle keeps an outline against the theme's background.
+        const toggleStyle = String(toggleBox.borderStyle.value.value);
+        root.setProperty("--toggle-border-width", `${toggleStyle === "none" ? (hc ? 2 : 0) : toggleBox.borderWidth.value}px`);
+        root.setProperty("--tg-padding", `${toggleBox.padding.value}px`);
+
+        const skin = String(toggle.controlStyle.value.value);
+        const customRadius = toggle.radiusIsCustom ? toggleBox.cornerRadius.value : undefined;
+        root.setProperty("--tg-radius-pct", String(skin === "toggle" && customRadius !== undefined ? customRadius : 50));
+        root.setProperty("--tg-checkbox-radius-pct", String(skin === "checkbox" && customRadius !== undefined ? customRadius : 20));
+
+        const handleStyle = String(handleBox.borderStyle.value.value);
+        root.setProperty("--hd-bw", `${handleStyle === "none" ? 0 : handleBox.borderWidth.value}px`);
+        root.setProperty("--hd-padding-pct", String(handleBox.padding.value));
+        root.setProperty("--hd-radius-pct", String(handleBox.cornerRadius.value));
+
+        if (hc) {
+            root.setProperty("--toggle-off-color", palette.background.value);
+            root.setProperty("--toggle-on-color", palette.background.value);
+            root.setProperty("--toggle-track-border-color", palette.foreground.value);
+            root.setProperty("--toggle-track-border-color-on", palette.foregroundSelected.value);
+            root.setProperty("--toggle-knob-color", palette.foreground.value);
+            root.setProperty("--toggle-knob-color-on", palette.foregroundSelected.value);
+            root.setProperty("--hd-bc", palette.foreground.value);
+            root.setProperty("--toggle-label-color", palette.foreground.value);
         } else {
-            const controlsObjects = dataView && dataView.metadata && dataView.metadata.objects && dataView.metadata.objects["controls"];
-            const hasCustomOnColor = !!(controlsObjects && controlsObjects["onColor"]);
-            const onColor = hasCustomOnColor ? card.onColor.value.value : palette.getColor("toggleOnColor").value;
-            const borderColor = card.showOutline.value ? card.outlineColor.value.value : "transparent";
+            const toggleObjects = dataView && dataView.metadata && dataView.metadata.objects && dataView.metadata.objects["toggleControl"];
+            const hasCustomOnColor = !!(toggleObjects && toggleObjects["onColor"]);
+            const onColor = hasCustomOnColor ? toggle.onColor.value.value : palette.getColor("toggleOnColor").value;
 
-            this.target.style.setProperty("--toggle-off-color", card.offColor.value.value);
-            this.target.style.setProperty("--toggle-on-color", onColor);
-            this.target.style.setProperty("--toggle-track-border-color", borderColor);
-            this.target.style.setProperty("--toggle-track-border-color-on", borderColor);
-            this.target.style.setProperty("--toggle-border-width", `${card.outlineWidth.value}px`);
-            this.target.style.setProperty("--toggle-knob-color", "#ffffff");
-            this.target.style.setProperty("--toggle-knob-color-on", "#ffffff");
-            this.target.style.setProperty("--toggle-label-color", "#605e5c");
+            root.setProperty("--toggle-off-color", toggle.offColor.value.value);
+            root.setProperty("--toggle-on-color", onColor);
+            root.setProperty("--toggle-track-border-color", toggleBox.borderColor.value.value);
+            root.setProperty("--toggle-track-border-color-on", toggleBox.borderColor.value.value);
+            root.setProperty("--toggle-knob-color", handleBox.backgroundColor.value.value);
+            root.setProperty("--toggle-knob-color-on", handleBox.backgroundColor.value.value);
+            root.setProperty("--hd-bc", handleBox.borderColor.value.value);
+            root.setProperty("--toggle-label-color", "#605e5c");
         }
     }
 
@@ -1130,7 +1189,7 @@ export class Visual implements IVisual {
      * supplies the three bounds, never a computed size itself.
      */
     private applySize(): void {
-        const card = this.formattingSettings.controlsCard;
+        const card = this.formattingSettings.toggleCard;
 
         // minHeight/maxHeight are independent NumUpDowns (each just its own 8-200 bound), so a
         // report author can freely set Min above Max - clamp() gives the minimum precedence when its
@@ -1146,24 +1205,24 @@ export class Visual implements IVisual {
     }
 
     /**
-     * Applies the title's, toggle names' and on/off labels' font family/size/weight/style/decoration/
-     * colour as CSS custom properties, each independently customizable from their own FontControl in
-     * the Format pane. There's no host API for reading the report theme's actual typography (unlike
-     * colour's host.colorPalette.getColor()), so these are static defaults, not a live theme readout.
-     * Colour specifically is still forced to the high-contrast palette's foreground when active,
-     * same as applyColors() already does for --toggle-label-color - a custom Format-pane colour
-     * isn't guaranteed legible against a high-contrast theme's background.
+     * Applies the Toggle Group Label's, Toggle Labels' and State Labels' font family/size/weight/
+     * style/decoration/colour as CSS custom properties, each independently customizable from their
+     * own FontControl in the Format pane. There's no host API for reading the report theme's actual
+     * typography (unlike colour's host.colorPalette.getColor()), so these are static defaults, not a
+     * live theme readout. Colour specifically is still forced to the high-contrast palette's
+     * foreground when active, same as applyColors() already does for --toggle-label-color - a custom
+     * Format-pane colour isn't guaranteed legible against a high-contrast theme's background.
      */
     private applyFonts(): void {
         const palette = this.host.colorPalette;
-        const titleCard = this.formattingSettings.titleCard;
-        const labelsCard = this.formattingSettings.stateLabelsCard;
-        const namesCard = this.formattingSettings.namesCard;
+        const groupLabelCard = this.formattingSettings.groupLabelCard;
+        const stateLabelCard = this.formattingSettings.stateLabelCard;
+        const toggleLabelCard = this.formattingSettings.toggleLabelCard;
 
-        const fonts: Array<[string, typeof titleCard.font, string]> = [
-            ["title", titleCard.font, titleCard.fontColor.value.value],
-            ["label", labelsCard.font, labelsCard.fontColor.value.value],
-            ["name", namesCard.font, namesCard.fontColor.value.value]
+        const fonts: Array<[string, typeof groupLabelCard.font, string]> = [
+            ["title", groupLabelCard.font, groupLabelCard.fontColor.value.value],
+            ["label", stateLabelCard.font, stateLabelCard.fontColor.value.value],
+            ["name", toggleLabelCard.font, toggleLabelCard.fontColor.value.value]
         ];
 
         for (const [prefix, font, color] of fonts) {
@@ -1176,28 +1235,50 @@ export class Visual implements IVisual {
         }
     }
 
+    private static readonly BORDER_STYLES = ["flat", "embossed", "sunken"];
+
+    /** Shows a border style as a class on a layer's element (is-border-flat/-embossed/-sunken); None adds no class. */
+    private setBorderStyle(el: HTMLElement, style: string): void {
+        for (const name of Visual.BORDER_STYLES) {
+            el.classList.toggle(`is-border-${name}`, name === style);
+        }
+    }
+
     /**
-     * The group's container box: one of a fixed set of border treatments (classes on frameEl -
-     * see .toggle-group-frame in visual.less) over the report author's own colour/width/radius,
-     * plus padding, vertical alignment and an optional fill. High contrast swaps the border to the
-     * theme foreground and drops the fill, for the same legibility reason applyColors() does.
+     * Writes one layer's Background, Border, Corner radius and Padding as CSS custom properties on
+     * the root (--<prefix>-bg/-bw/-bc/-radius/-padding), which visual.less's layer-box() mixin reads for
+     * every element of that layer. The border *style* is a class on each element instead (see
+     * setBorderStyle()). High contrast swaps the border to the theme foreground and drops any fill,
+     * for the same legibility reason applyColors() does.
+     */
+    private setBoxVars(prefix: string, box: BoxSlices): void {
+        const palette = this.host.colorPalette;
+        const root = this.target.style;
+        const fill = box.background === "toggle" ? box.showBackground.value : true;
+        root.setProperty(`--${prefix}-bg`, fill && !palette.isHighContrast ? box.backgroundColor.value.value : "transparent");
+        root.setProperty(`--${prefix}-bw`, `${box.borderWidth.value}px`);
+        root.setProperty(`--${prefix}-bc`, palette.isHighContrast ? palette.foreground.value : box.borderColor.value.value);
+        root.setProperty(`--${prefix}-radius`, `${box.cornerRadius.value}px`);
+        root.setProperty(`--${prefix}-padding`, `${box.padding.value}px`);
+    }
+
+    /**
+     * The Toggle Group's box (frameEl) and the box settings of the three text layers that have one
+     * (Toggle Group Label, Toggle Label, State Label). The toggle's and handle's own boxes are
+     * applied in applyColors(), since their size is tied to the toggle's height. Per-row elements
+     * get their border-style classes in render()/renderSwitch().
      */
     private applyContainer(): void {
-        const card = this.formattingSettings.frameCard;
-        const layout = this.formattingSettings.layoutCard;
-        const palette = this.host.colorPalette;
-        const borderStyle = String(card.borderStyle.value.value);
+        const group = this.formattingSettings.toggleGroupCard;
 
-        this.frameEl.classList.remove("is-border-none", "is-border-flat", "is-border-embossed", "is-border-gutter");
-        this.frameEl.classList.add(`is-border-${borderStyle}`);
+        this.setBoxVars("grp", group.box);
+        this.setBoxVars("gl", this.formattingSettings.groupLabelCard.box);
+        this.setBoxVars("tl", this.formattingSettings.toggleLabelCard.box);
+        this.setBoxVars("sl", this.formattingSettings.stateLabelCard.box);
+
+        this.setBorderStyle(this.frameEl, String(group.box.borderStyle.value.value));
         this.frameEl.classList.remove("is-valign-top", "is-valign-middle", "is-valign-bottom");
-        this.frameEl.classList.add(`is-valign-${layout.verticalAlignment.value.value}`);
-
-        this.frameEl.style.setProperty("--toggle-frame-border-color", palette.isHighContrast ? palette.foreground.value : card.borderColor.value.value);
-        this.frameEl.style.setProperty("--toggle-frame-border-width", `${card.borderWidth.value}px`);
-        this.frameEl.style.setProperty("--toggle-frame-radius", `${card.cornerRadius.value}px`);
-        this.frameEl.style.setProperty("--toggle-frame-padding", `${layout.padding.value}px`);
-        this.frameEl.style.backgroundColor = card.showBackground.value && !palette.isHighContrast ? card.backgroundColor.value.value : "";
+        this.frameEl.classList.add(`is-valign-${group.verticalAlignment.value.value}`);
     }
 
     /**
@@ -1206,7 +1287,7 @@ export class Visual implements IVisual {
      * checkboxes instead, the conventional "select all"/"enable" control above a radio list.
      */
     private skinFor(item: GroupItem): "toggle" | "checkbox" | "radio" {
-        const skin = String(this.formattingSettings.controlsCard.controlStyle.value.value);
+        const skin = String(this.formattingSettings.toggleCard.controlStyle.value.value);
         if (skin === "radio") {
             return item.kind === "toggle" ? "radio" : "checkbox";
         }
@@ -1218,10 +1299,10 @@ export class Visual implements IVisual {
         this.placeRows();
 
         const behaviorCard = this.formattingSettings.behaviorCard;
-        const layoutCard = this.formattingSettings.layoutCard;
-        const namesCard = this.formattingSettings.namesCard;
-        const titleCard = this.formattingSettings.titleCard;
-        const controlsCard = this.formattingSettings.controlsCard;
+        const groupCard = this.formattingSettings.toggleGroupCard;
+        const toggleLabelCard = this.formattingSettings.toggleLabelCard;
+        const groupLabelCard = this.formattingSettings.groupLabelCard;
+        const toggleCard = this.formattingSettings.toggleCard;
 
         // Shows a real, localized default until a report author sets their own text - settings.ts's
         // own static default is deliberately blank so this doesn't fall back to fixed English UI
@@ -1229,46 +1310,47 @@ export class Visual implements IVisual {
         // persisted value, including a deliberately-cleared blank one), the report-authored value
         // always wins, so clearing the field still shows no title. The card's Show toggle hides it
         // outright.
-        const titleText = !titleCard.show.value
+        const titleText = !groupLabelCard.show.value
             ? ""
             : this.hasCustomTitleText
-                ? titleCard.text.value
-                : this.localizationManager.getDisplayName("Visual_Title_Text_Default");
+                ? groupLabelCard.text.value
+                : this.localizationManager.getDisplayName("Visual_GroupLabel_Text_Default");
         this.titleEl.textContent = titleText;
         this.titleEl.style.display = titleText ? "" : "none";
+        this.setBorderStyle(this.titleEl, String(groupLabelCard.box.borderStyle.value.value));
 
         // "Inline left" needs no order override - titleEl already comes before groupEl in DOM
         // order. "Inline right" flips that via CSS order; "Above" (the default) stacks them in a
         // column with the title always first/top.
-        const titlePosition = String(titleCard.position.value.value);
+        const titlePosition = String(groupLabelCard.position.value.value);
         this.titleWrapEl.classList.toggle("toggle-slicer-wrap--stacked", titlePosition === "above");
         this.titleWrapEl.classList.toggle("toggle-slicer-wrap--inline-right", titlePosition === "inline-right");
-        this.titleWrapEl.style.setProperty("--toggle-title-gap", `${titleCard.spacing.value}px`);
+        this.titleWrapEl.style.setProperty("--toggle-title-gap", `${groupLabelCard.spacing.value}px`);
 
         // Where the whole title+group assembly sits in the container - applied to titleWrapEl
         // itself via CSS auto margins (see visual.less), not the shared "target" root, since target
         // is also the parent of the unrelated landing-page/validation-message sections.
         this.titleWrapEl.classList.remove("is-title-align-left", "is-title-align-center", "is-title-align-right", "is-title-align-justify");
-        this.titleWrapEl.classList.add(`is-title-align-${titleCard.alignment.value.value}`);
+        this.titleWrapEl.classList.add(`is-title-align-${groupLabelCard.alignment.value.value}`);
 
         // Every names alignment but Left (Center, Right, Justify) moves the rows within the group's
         // width, which only has room to happen once the group (and so titleWrapEl around it) fills
         // the container's width - a shrink-wrapped group has no spare space to center or push into.
-        const namesShown = namesCard.show.value;
-        const nameAlignment = String(layoutCard.rowAlignment.value.value);
+        const namesShown = toggleLabelCard.show.value;
+        const nameAlignment = String(groupCard.rowAlignment.value.value);
         this.titleWrapEl.classList.toggle("is-group-stretched", nameAlignment !== "left");
 
         // Grid layout knobs - see .toggle-group in visual.less for how the name/switch columns,
         // indent and --toggle-max-level (names-right's hanging indent) fit together.
-        const namesRight = namesShown && namesCard.position.value.value === "right";
+        const namesRight = namesShown && toggleLabelCard.position.value.value === "right";
         this.groupEl.classList.toggle("is-names-hidden", !namesShown);
         this.groupEl.classList.toggle("is-names-right", namesRight);
         this.groupEl.classList.toggle("is-readonly", !this.interactionsAllowed());
         this.groupEl.classList.remove("is-align-left", "is-align-center", "is-align-right", "is-align-justify");
         this.groupEl.classList.add(`is-align-${nameAlignment}`);
-        this.groupEl.style.setProperty("--toggle-row-gap", `${layoutCard.rowSpacing.value}px`);
-        this.groupEl.style.setProperty("--toggle-name-gap", `${namesCard.spacing.value}px`);
-        this.groupEl.style.setProperty("--toggle-indent", `${layoutCard.indent.value}px`);
+        this.groupEl.style.setProperty("--toggle-row-gap", `${groupCard.rowSpacing.value}px`);
+        this.groupEl.style.setProperty("--toggle-name-gap", `${toggleLabelCard.spacing.value}px`);
+        this.groupEl.style.setProperty("--toggle-indent", `${groupCard.indent.value}px`);
         this.groupEl.style.setProperty("--toggle-max-level", String(Math.max(0, ...this.items.map((item) => item.level))));
         // Responsive sizing shares the tile's height out across every row, rather than sizing
         // each toggle as if it had the whole tile to itself.
@@ -1279,7 +1361,7 @@ export class Visual implements IVisual {
         // toggle groups on one page apart for a screen reader user.
         // The radiogroup is childrenEl - the toggle rows alone - so the checkbox-drawn header rows
         // (Group enable, master) stay outside it as ordinary controls in the surrounding group.
-        const isRadioGroup = behaviorCard.onlyOneActive.value && controlsCard.controlStyle.value.value === "radio";
+        const isRadioGroup = behaviorCard.onlyOneActive.value && toggleCard.controlStyle.value.value === "radio";
         this.groupEl.setAttribute("role", "group");
         if (isRadioGroup) {
             this.childrenEl.setAttribute("role", "radiogroup");
@@ -1318,6 +1400,7 @@ export class Visual implements IVisual {
             row.rowEl.style.setProperty("--toggle-level", String(item.level));
             row.nameEl.textContent = item.name;
             row.nameEl.style.display = namesShown ? "" : "none";
+            this.setBorderStyle(row.nameEl, String(toggleLabelCard.box.borderStyle.value.value));
             row.nameEl.classList.toggle("is-disabled", isDisabled);
             row.cellEl.classList.toggle("is-disabled", isDisabled);
 
@@ -1329,18 +1412,19 @@ export class Visual implements IVisual {
 
     /** Draws one row's switch cell - the pre-group single toggle's render(), applied per row. */
     private renderSwitch(item: GroupItem, row: RowElements, isDisabled: boolean, tabbable: boolean): void {
-        const card = this.formattingSettings.stateLabelsCard;
-        const controlsCard = this.formattingSettings.controlsCard;
+        const card = this.formattingSettings.stateLabelCard;
+        const toggleCard = this.formattingSettings.toggleCard;
+        const handleCard = this.formattingSettings.handleCard;
         const behaviorCard = this.formattingSettings.behaviorCard;
-        const { switchEl, cellEl, onLabelEl, offLabelEl, innerOnEl, innerOffEl } = row;
+        const { switchEl, cellEl, onLabelEl, offLabelEl, innerOnEl, innerOffEl, trackEl, knobEl } = row;
         const isMixed = item.isMixed;
         const isOn = item.isOn && !isMixed;
 
         switchEl.classList.toggle("is-on", isOn);
         switchEl.classList.toggle("is-off", !isOn && !isMixed);
         switchEl.classList.toggle("is-mixed", isMixed);
-        switchEl.classList.toggle("is-depth", controlsCard.depthEffect.value);
-        switchEl.classList.toggle("is-size-fixed", controlsCard.sizeMode.value.value === "fixed");
+        switchEl.classList.toggle("is-depth", toggleCard.depthEffect.value);
+        switchEl.classList.toggle("is-size-fixed", toggleCard.sizeMode.value.value === "fixed");
 
         // Reflects hostCapabilities.allowInteractions (e.g. Focus mode thumbnails, some export/embed
         // contexts) visually and removes the switch from the tab order, matching handleClick's own
@@ -1366,6 +1450,16 @@ export class Visual implements IVisual {
         // role="switch" has no "mixed" state in ARIA - its aria-label still says "Mixed" below.
         switchEl.setAttribute("aria-checked", isMixed ? (role === "switch" ? "false" : "mixed") : String(isOn));
 
+        // The toggle's and handle's own border styles; every state label element (beside the toggle,
+        // inside it, and the hidden sizers that give an inside label its width) shares the State
+        // Label's.
+        this.setBorderStyle(trackEl, String(toggleCard.box.borderStyle.value.value));
+        this.setBorderStyle(knobEl, String(handleCard.box.borderStyle.value.value));
+        const stateBorder = String(card.box.borderStyle.value.value);
+        for (const el of [onLabelEl, offLabelEl, innerOnEl, innerOffEl, row.layerOnLabelEl, row.layerOffLabelEl]) {
+            this.setBorderStyle(el, stateBorder);
+        }
+
         onLabelEl.textContent = card.onText.value;
         offLabelEl.textContent = card.offText.value;
         cellEl.style.setProperty("--toggle-label-gap", `${card.spacing.value}px`);
@@ -1383,17 +1477,21 @@ export class Visual implements IVisual {
         cellEl.classList.toggle("toggle-slicer--inline-left", labelPosition === "inline-left");
         cellEl.classList.toggle("toggle-slicer--inline-right", labelPosition === "inline-right");
 
-        // State labels -> Show off always wins over the stylesheet's container-query auto-hide, regardless
+        // State Label -> Show off always wins over the stylesheet's container-query auto-hide, regardless
         // of size. A Mixed master shows neither, since it's neither On nor Off.
         const showLabels = card.show.value;
         const inside = showLabels && labelPosition === "inside";
         switchEl.classList.toggle("is-inside", inside);
-        innerOnEl.textContent = inside ? card.onText.value : "";
-        innerOffEl.textContent = inside ? card.offText.value : "";
+        for (const el of [innerOnEl, row.layerOnLabelEl]) {
+            el.textContent = inside ? card.onText.value : "";
+        }
+        for (const el of [innerOffEl, row.layerOffLabelEl]) {
+            el.textContent = inside ? card.offText.value : "";
+        }
         onLabelEl.style.display = showLabels && !inside && isOn ? "" : "none";
         offLabelEl.style.display = showLabels && !inside && !isOn && !isMixed ? "" : "none";
 
-        // The aria-label always names the row and both states regardless of State labels/Toggle names, since
+        // The aria-label always names the row and both states regardless of State Label/Toggle Label, since
         // hidden visible text makes the accessible name more important, not less. Names and label
         // text are arbitrary report-author input, so every token is substituted in a single pass
         // (text inserted for one token is never re-scanned, so a name containing "{2}" stays
@@ -1450,7 +1548,7 @@ export class Visual implements IVisual {
             return;
         }
 
-        const card = this.formattingSettings.stateLabelsCard;
+        const card = this.formattingSettings.stateLabelCard;
         const currentLabel = item.isMixed
             ? this.localizationManager.getDisplayName("Visual_State_Mixed")
             : item.isOn ? card.onText.value : card.offText.value;

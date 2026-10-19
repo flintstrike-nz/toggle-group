@@ -1,28 +1,42 @@
 /*
- *  Power BI Visualizations
- *
- *  Copyright (c) Microsoft Corporation
- *  All rights reserved.
- *  MIT License
- *
- *  Permission is hereby granted, free of charge, to any person obtaining a copy
- *  of this software and associated documentation files (the ""Software""), to deal
- *  in the Software without restriction, including without limitation the rights
- *  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- *  copies of the Software, and to permit persons to whom the Software is
- *  furnished to do so, subject to the following conditions:
- *
- *  The above copyright notice and this permission notice shall be included in
- *  all copies or substantial portions of the Software.
- *
- *  THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- *  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- *  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- *  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- *  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- *  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- *  THE SOFTWARE.
+ *  Copyright (c) 2026 Hayden Flintoft
+ *  MIT License - see the LICENSE file in the repository root.
  */
+
+// One layer's box: Background, Border, Corner radius and Padding. @p names the layer's custom
+// properties (--@{p}-bg/-bw/-bc/-radius/-padding, written on the root by setBoxVars() in visual.ts);
+// the border *style* is a class on each element (is-border-flat/-embossed/-sunken - none adds no
+// class, so no border is drawn). Embossed (raised) and Sunken (recessed) are fixed rgba() shading
+// layered over the report author's own colour/width, the same approach the 3D effect uses, so they
+// work over any colour without needing its hue (and avoid color-mix(), which needs a newer Chromium
+// than every managed WebView2/Edge install is guaranteed to have).
+.layer-box(@p) {
+    box-sizing: border-box;
+    background-color: ~"var(--@{p}-bg, transparent)";
+    border-radius: ~"var(--@{p}-radius, 0px)";
+    padding: ~"var(--@{p}-padding, 0px)";
+
+    &.is-border-flat,
+    &.is-border-embossed,
+    &.is-border-sunken {
+        border: ~"var(--@{p}-bw, 1px) solid var(--@{p}-bc, #c8c6c4)";
+    }
+
+    &.is-border-embossed {
+        background-image: linear-gradient(to bottom, rgba(255, 255, 255, 0.45), rgba(255, 255, 255, 0) 30%, rgba(0, 0, 0, 0.03));
+        box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.8),
+            inset 0 -1px 0 rgba(0, 0, 0, 0.12),
+            0 1px 2px rgba(0, 0, 0, 0.2);
+    }
+
+    &.is-border-sunken {
+        box-shadow:
+            inset 0 2px 4px rgba(0, 0, 0, 0.22),
+            inset 0 1px 1px rgba(0, 0, 0, 0.18),
+            0 1px 0 rgba(255, 255, 255, 0.7);
+    }
+}
 
 .toggle-slicer-visual {
     container-type: size;
@@ -37,14 +51,9 @@
     font-family: "Segoe UI", wf_segoe-ui_normal, helvetica, arial, sans-serif;
 }
 
-// The group's bordered container (the Border & background card) - fills the tile, so the border reads as the
-// visual's own edge, and scrolls rather than clips when more rows are bound than fit. Border
-// treatments are fixed rgba() shading layered over the report author's own colour/width, the same
-// approach .is-depth uses on each toggle, so they work over any colour without needing its hue:
-// - Flat: a plain line.
-// - Embossed: a raised card - a light top edge, darker bottom edge and soft outer drop shadow. The
-//   outer shadow needs a few px of margin to render into, or the visual's own bounds clip it.
-// - Gutter: a recessed channel - an inner shadow along the top edge and a light lip below it.
+// The Toggle Group: the box around the label and every row - fills the tile, so its border reads as
+// the visual's own edge, and scrolls rather than clips when more rows are bound than fit. Its
+// Background, Border, Corner radius and Padding are the shared layer-box() (prefix grp).
 .toggle-group-frame {
     display: none;
     flex-direction: column;
@@ -52,20 +61,13 @@
     align-self: stretch;
     min-width: 0;
     min-height: 0;
-    box-sizing: border-box;
     overflow: auto;
-    padding: var(--toggle-frame-padding, 8px);
-    border-radius: var(--toggle-frame-radius, 4px);
+    .layer-box(grp);
 
-    &.is-border-flat,
-    &.is-border-embossed,
-    &.is-border-gutter {
-        border: var(--toggle-frame-border-width, 1px) solid var(--toggle-frame-border-color, #c8c6c4);
-    }
-
+    // A raised frame's outer drop shadow needs a few px of margin to render into, or the visual's
+    // own bounds clip it.
     &.is-border-embossed {
         margin: 4px;
-        background-image: linear-gradient(to bottom, rgba(255, 255, 255, 0.45), rgba(255, 255, 255, 0) 30%, rgba(0, 0, 0, 0.03));
         box-shadow:
             inset 0 1px 0 rgba(255, 255, 255, 0.8),
             inset 0 -1px 0 rgba(0, 0, 0, 0.12),
@@ -73,14 +75,7 @@
             0 3px 6px rgba(0, 0, 0, 0.12);
     }
 
-    &.is-border-gutter {
-        box-shadow:
-            inset 0 2px 4px rgba(0, 0, 0, 0.22),
-            inset 0 1px 1px rgba(0, 0, 0, 0.18),
-            0 1px 0 rgba(255, 255, 255, 0.7);
-    }
-
-    // layout.verticalAlignment - auto margins rather than justify-content, since
+    // toggleGroup.verticalAlignment - auto margins rather than justify-content, since
     // justify-content: center pushes overflowing content off the top of a scroll container where it
     // can't be scrolled back to, whereas an auto margin just collapses to 0 once content overflows.
     &.is-valign-middle > .toggle-slicer-wrap {
@@ -107,7 +102,7 @@
         align-items: flex-start;
     }
 
-    // "Inline right" (title.position) - titleEl already comes before the group in DOM
+    // "Inline right" (groupLabel.position) - titleEl already comes before the group in DOM
     // order by default ("Inline left"), so only the "right" variant needs an order override to swap
     // sides; "Above" (--stacked) always keeps the title first/top regardless.
     &--inline-right {
@@ -116,7 +111,7 @@
         }
     }
 
-    // title.alignment - positions titleWrapEl itself within the frame via cross-axis auto
+    // groupLabel.alignment - positions titleWrapEl itself within the frame via cross-axis auto
     // margins (the frame is a column flexbox, so left/right are its cross axis) rather than changing
     // "toggle-slicer-visual"'s own alignment, since that root element is also the parent of the
     // unrelated landing-page/validation-message sections. "Justify" stretches titleWrapEl to the
@@ -153,7 +148,7 @@
         justify-content: space-between;
     }
 
-    // layout.rowAlignment: Center, Right or Justify - the group moves names and toggles within its
+    // toggleGroup.rowAlignment: Center, Right or Justify - the group moves names and toggles within its
     // own width, which needs the group (and so this wrapper) to span the frame's full width to have
     // any room to move into.
     // The margin reset matters: a cross-axis auto margin (is-title-align-left/right above) beats
@@ -178,6 +173,7 @@
 }
 
 .toggle-slicer__title {
+    .layer-box(gl);
     font-family: var(--toggle-title-font-family, "Segoe UI"), wf_segoe-ui_normal, helvetica, arial, sans-serif;
     font-size: var(--toggle-title-font-size, 14px);
     font-weight: var(--toggle-title-font-weight, 600);
@@ -188,7 +184,7 @@
     text-align: center;
 
     // Above: the title heads the group, so it lines up with the group's own edge rather than
-    // centring over it - that edge being whichever side title.alignment packs toward.
+    // centring over it - that edge being whichever side groupLabel.alignment packs toward.
     .toggle-slicer-wrap--stacked > & {
         text-align: left;
     }
@@ -205,8 +201,8 @@
 // The toggle rows. One shared CSS grid for every row (rows themselves are display: contents), so a
 // name column and a toggle column line up across the whole group regardless of each name's length.
 // DOM order decides which column comes first (render() swaps a row's name/cell elements for
-// names.position) - CSS order can't, since with display: contents rows it would reorder
-// every row's cells against each other. Indent (layout.indent x each row's --toggle-level)
+// toggleLabel.position) - CSS order can't, since with display: contents rows it would reorder
+// every row's cells against each other. Indent (toggleGroup.indent x each row's --toggle-level)
 // always goes on whichever cell comes first, so the whole row steps in:
 // - Names left: the name is indented; toggles stay aligned in their own column.
 // - Names right / hidden: the toggle cell is indented. Names right also pulls each name back left
@@ -242,7 +238,7 @@
         justify-content: safe end;
     }
 
-    // layout.rowAlignment: Justify - the flexible column takes up the slack, pushing names and
+    // toggleGroup.rowAlignment: Justify - the flexible column takes up the slack, pushing names and
     // toggles to opposite edges of the (stretched - see .is-group-stretched above) group.
     &.is-align-justify {
         grid-template-columns: minmax(0, 1fr) max-content;
@@ -269,7 +265,6 @@
     }
 
     &.is-names-right .toggle-group__name {
-        padding-left: 0;
         margin-left: calc((var(--toggle-level, 0) - var(--toggle-max-level, 0)) * var(--toggle-indent, 16px));
     }
 
@@ -284,7 +279,10 @@
 }
 
 .toggle-group__name {
-    padding-left: calc(var(--toggle-level, 0) * var(--toggle-indent, 16px));
+    .layer-box(tl);
+    // The row's indent is a margin, not padding, so a Toggle Label's own background and border start
+    // after it rather than swallowing it.
+    margin-left: calc(var(--toggle-level, 0) * var(--toggle-indent, 16px));
     font-family: var(--toggle-name-font-family, "Segoe UI"), wf_segoe-ui_normal, helvetica, arial, sans-serif;
     font-size: var(--toggle-name-font-size, 12px);
     font-weight: var(--toggle-name-font-weight, normal);
@@ -351,6 +349,7 @@
     }
 }
 .toggle-slicer__label {
+    .layer-box(sl);
     font-family: var(--toggle-label-font-family, "Segoe UI"), wf_segoe-ui_normal, helvetica, arial, sans-serif;
     font-size: var(--toggle-label-font-size, 12px);
     font-weight: var(--toggle-label-font-weight, normal);
@@ -370,8 +369,8 @@
 
 .toggle-slicer__switch {
     // Height-driven sizing: width always follows at a fixed ratio (2:1 - 44x22's own ratio - for the
-    // toggle skin, 1:1 for checkbox/radio), so a report author only ever sets one dimension - see
-    // Size settings in settings.ts. In Responsive mode (the default), height scales fluidly with the
+    // toggle skin, 1:1 for checkbox/radio), so a report author only ever sets one dimension - see the
+    // Toggle card's Size group. In Responsive mode (the default), height scales fluidly with the
     // visual's own height (the "toggle-slicer" container's cqh unit), shared out across every row
     // (--toggle-row-count, set in render()) so a tall tile with many rows doesn't size each toggle
     // as though it had the whole tile to itself, clamped between --toggle-min-height/
@@ -383,14 +382,23 @@
     // single literal height below.
     --toggle-track-height: clamp(var(--toggle-min-height, 16px), calc(50cqh / var(--toggle-row-count, 1)), var(--toggle-max-height, 22px));
     --toggle-track-width: calc(var(--toggle-track-height) * 2);
-    // Border width (borderWidth, 0-6px) and height (minHeight/fixedHeight, 8-200px) are independent
-    // report-author settings, so a large border paired with a short switch could otherwise collapse
-    // the knob to zero or negative size - e.g. an 8px-tall switch with a 6px border leaves height -
-    // 2*border = -4px. Capping the border actually used in layout at just under half the current
-    // track height (whatever that resolves to - Responsive's fluid value or Fixed's literal one)
-    // guarantees a knob at least 2px across no matter what combination is chosen, without needing to
-    // restrict the two settings' own ranges against each other.
-    --toggle-effective-border-width: min(var(--toggle-border-width, 2px), calc(var(--toggle-track-height) / 2 - 1px));
+    // Border width (0-8px), padding (0-48px) and height (8-200px) are independent report-author
+    // settings, so a large border or padding paired with a short toggle could otherwise collapse the
+    // handle to zero or negative size. Capping the border at just under half the track height, and
+    // the padding at just under half of what the border leaves, guarantees a handle at least 2px
+    // across no matter what combination is chosen, without restricting the settings' own ranges
+    // against each other. (--toggle-border-width is 0 until a border style is chosen.)
+    --toggle-effective-border-width: min(var(--toggle-border-width, 0px), calc(var(--toggle-track-height) / 2 - 1px));
+    --toggle-effective-padding: min(var(--tg-padding, 2px), calc((var(--toggle-track-height) - 2 * var(--toggle-effective-border-width)) / 2 - 1px));
+    --toggle-knob-size: calc(var(--toggle-track-height) - 2 * var(--toggle-effective-border-width) - 2 * var(--toggle-effective-padding));
+    // Corner radius is a percentage of the toggle's height (50 = a pill); a checkbox has its own.
+    --toggle-radius: calc(var(--toggle-track-height) * var(--tg-radius-pct, 50) / 100);
+    // The Handle's padding is also a percentage of the toggle's height, so a radio's dot and a
+    // checkbox's tick scale with the toggle. The dot fills what is left of the track's inner size after
+    // the toggle's padding and this inset on both sides (never under 4px); the tick's drawing has
+    // margin built into its viewBox, so its box is 30% larger than the dot to look the same size.
+    --toggle-glyph-inset: calc(var(--toggle-track-height) * var(--hd-padding-pct, 18) / 100);
+    --toggle-dot-size: max(4px, calc(100% - 2 * (var(--toggle-effective-padding, 0px) + var(--toggle-glyph-inset))));
 
     position: relative;
     width: var(--toggle-track-width);
@@ -398,7 +406,7 @@
     flex: 0 0 auto;
     cursor: pointer;
     outline: none;
-    border-radius: 999px;
+    border-radius: var(--toggle-radius);
 
     &.is-size-fixed {
         --toggle-track-height: var(--toggle-fixed-height, 22px);
@@ -433,22 +441,35 @@
     }
 
     &.is-checkbox {
-        border-radius: calc(var(--toggle-track-height) * 0.2);
+        --toggle-radius: calc(var(--toggle-track-height) * var(--tg-checkbox-radius-pct, 20) / 100);
     }
 
     &.is-radio {
-        border-radius: 50%;
+        --toggle-radius: 50%;
     }
 }
 
+// The toggle's own layer: its fill is the On/Off colour, its border the Toggle card's Border group
+// (width and colour as variables; the style class adds the Embossed/Sunken shading), and its padding
+// is the gap between its edge and the handle (see the knob's offsets below).
 .toggle-slicer__track {
     position: absolute;
     inset: 0;
     box-sizing: border-box;
-    border-radius: 999px;
-    border: var(--toggle-effective-border-width, 2px) solid var(--toggle-track-border-color, transparent);
+    border-radius: var(--toggle-radius);
+    border: var(--toggle-effective-border-width, 0px) solid var(--toggle-track-border-color, transparent);
     background-color: var(--toggle-off-color, #b0b3b8);
+    // Border shading and the 3D effect's inset groove are separate layers of one box-shadow.
+    box-shadow: var(--toggle-border-shadow, 0 0 0 transparent), var(--toggle-depth-shadow, 0 0 0 transparent);
     transition: background-color 0.15s ease-in-out, border-color 0.15s ease-in-out;
+
+    &.is-border-embossed {
+        --toggle-border-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), inset 0 -1px 0 rgba(0, 0, 0, 0.18), 0 1px 2px rgba(0, 0, 0, 0.25);
+    }
+
+    &.is-border-sunken {
+        --toggle-border-shadow: inset 0 2px 3px rgba(0, 0, 0, 0.3), 0 1px 0 rgba(255, 255, 255, 0.6);
+    }
 }
 
 .toggle-slicer__switch.is-on .toggle-slicer__track {
@@ -456,37 +477,41 @@
     border-color: var(--toggle-track-border-color-on, transparent);
 }
 
-// "3D depth" option: a sheen gradient plus an inset shadow gives the track a recessed, glossy
-// groove instead of a flat fill. Uses plain rgba layers rather than color-mix() (which needs a
-// newer Chromium than some managed WebView2/Edge installs ship) so it works over whatever solid
-// on/off colour is already set, without needing to know that colour's hue.
+// "3D effect" option: a sheen gradient plus an inset shadow gives the track a recessed, glossy
+// groove instead of a flat fill. Uses plain rgba layers rather than color-mix() so it works over
+// whatever solid on/off colour is already set, without needing to know that colour's hue.
 .toggle-slicer__switch.is-depth .toggle-slicer__track {
     background-image: linear-gradient(to bottom, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0) 40%, rgba(0, 0, 0, 0.15));
-    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35), inset 0 -1px 0 rgba(255, 255, 255, 0.15);
+    --toggle-depth-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35), inset 0 -1px 0 rgba(255, 255, 255, 0.15);
 }
 
+// The handle: the toggle skin's sliding knob (the radio skin's dot, the checkbox skin's tick uses
+// its colour). Colour, Border and Corner radius are the Handle card's. Its containing block is the
+// track's padding box, which is already inset by the track's own border, so only the track's padding
+// offsets it - and its size is the track's height minus the border and padding on both sides
+// (--toggle-knob-size), so it stays centred and at least 2px across at any combination. The "on"
+// state's translateX needs no border or padding terms - they cancel out algebraically, since both
+// ends are inset the same amount - so it is always just trackWidth - trackHeight.
 .toggle-slicer__knob {
-    // The knob's containing block is the track's padding box, which is already inset by the
-    // track's own border - offsetting top/left here would double-count that border, pushing the
-    // knob past the track's actual centre (flush with the bottom/right edge instead of centred).
-    // 0/0 sits it exactly inside the border on every side. Size is derived from the track's own
-    // (possibly Responsive/fluid, possibly Fixed) height minus the *effective* border width (see
-    // --toggle-effective-border-width above, capped below half the track height) via calc(), so the
-    // knob stays centred, at least 2px across, and the border stays visible as an even ring around
-    // it - at any height or border width, including combinations too extreme for the raw border
-    // width to fit; the "on" translateX below needs no such border adjustment since the border
-    // terms cancel out algebraically - (trackWidth - 2b) - (trackHeight - 2b) = trackWidth -
-    // trackHeight regardless of b - and no height adjustment beyond referencing the same variables,
-    // since it was always just that difference regardless of the switch's overall size.
     position: absolute;
-    top: 0;
-    left: 0;
-    width: calc(var(--toggle-track-height) - 2 * var(--toggle-effective-border-width, 2px));
-    height: calc(var(--toggle-track-height) - 2 * var(--toggle-effective-border-width, 2px));
-    border-radius: 50%;
+    top: var(--toggle-effective-padding, 0px);
+    left: var(--toggle-effective-padding, 0px);
+    width: var(--toggle-knob-size);
+    height: var(--toggle-knob-size);
+    box-sizing: border-box;
+    border-radius: calc(var(--toggle-knob-size) * var(--hd-radius-pct, 50) / 100);
+    border: var(--hd-bw, 0px) solid var(--hd-bc, transparent);
     background-color: var(--toggle-knob-color, #ffffff);
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+    box-shadow: var(--hd-base-shadow, 0 1px 2px rgba(0, 0, 0, 0.3)), var(--hd-border-shadow, 0 0 0 transparent);
     transition: transform 0.15s ease-in-out, left 0.15s ease-in-out, background-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+
+    &.is-border-embossed {
+        --hd-border-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), inset 0 -1px 0 rgba(0, 0, 0, 0.18);
+    }
+
+    &.is-border-sunken {
+        --hd-border-shadow: inset 0 2px 3px rgba(0, 0, 0, 0.3);
+    }
 }
 
 .toggle-slicer__switch.is-on .toggle-slicer__knob {
@@ -506,65 +531,100 @@
     transform: translateX(calc((var(--toggle-track-width) - var(--toggle-track-height)) / 2));
 }
 
-// Label position "Inside switch" (toggle skin only - see renderSwitch()): the state text sits inside
-// the track, opposite the knob. The track grows past its 2:1 width to fit the wider of the On/Off
-// texts (both overlaid in one grid cell, only the current one visible), so it doesn't change width
-// when clicked and every row - sharing the same two labels - gets the same width. With the width no
-// longer a known ratio of the height, the knob is placed with left: 100% of the track's padding box
-// minus its own size instead of the fixed translateX above; the border terms cancel as before.
-.toggle-slicer__inner {
+// State Label position "Inside switch" (toggle skin only - see renderSwitch()). Each state's text is
+// stationary, in its own layer *under* the handle (.toggle-slicer__layer), centred horizontally and
+// vertically in the part of the track the handle isn't covering when that state is current:
+// - On: the left part, [0, track - reach], with the handle on the right;
+// - Off: the right part, [reach, track], with the handle on the left;
+// where "reach" is the handle's far edge measured from its own end of the track (padding + handle).
+// Each layer is clipped to the side of the handle it belongs to, and that clip transitions with the
+// same duration and easing as the handle's own slide - so the handle appears to wipe the text out
+// as it slides over it, and to uncover it as it slides away, while the text itself never moves.
+// The track grows past its 2:1 width to fit the wider of the two labels (a hidden sizer,
+// .toggle-slicer__inner, holds both in one grid cell), so it doesn't change width when clicked and
+// every row - sharing the same two labels - gets the same width. With the width no longer a known
+// ratio of the height, the handle is placed with left: 100% of the track's padding box minus its own
+// size and padding instead of the fixed translateX above.
+.toggle-slicer__inner,
+.toggle-slicer__layer {
     display: none;
 }
 
 .toggle-slicer__switch.is-inside {
-    --toggle-knob-size: calc(var(--toggle-track-height) - 2 * var(--toggle-effective-border-width, 2px));
+    --toggle-reach: calc(var(--toggle-effective-padding) + var(--toggle-knob-size));
     width: auto;
     min-width: var(--toggle-track-width);
 
-    .toggle-slicer__inner {
-        position: relative;
-        display: grid;
-        align-items: center;
-        height: 100%;
+    // Both the hidden sizer and the visible layers draw their text with the same box (the State
+    // Label's padding, border and corner radius) and font, so the sizer is exactly as wide as the
+    // labels it stands in for. The font size is capped so the text always fits the track's height.
+    .toggle-slicer__inner-label {
+        .layer-box(sl);
+        display: block;
         font-family: var(--toggle-label-font-family, "Segoe UI"), wf_segoe-ui_normal, helvetica, arial, sans-serif;
-        // The label font size, capped so the text always fits the track's height.
-        font-size: min(var(--toggle-label-font-size, 12px), calc(var(--toggle-track-height) * 0.6));
+        font-size: min(var(--toggle-label-font-size, 10px), calc(var(--toggle-track-height) * 0.6));
         font-weight: var(--toggle-label-font-weight, normal);
         font-style: var(--toggle-label-font-style, normal);
         text-decoration: var(--toggle-label-text-decoration, none);
         line-height: 1;
         white-space: nowrap;
         user-select: none;
-        pointer-events: none;
     }
 
-    .toggle-slicer__inner-label {
-        grid-area: 1 / 1;
+    .toggle-slicer__inner {
+        display: grid;
         visibility: hidden;
+        height: 0;
+        padding-left: calc(2 * var(--toggle-effective-border-width) + var(--toggle-reach));
+        pointer-events: none;
+
+        .toggle-slicer__inner-label {
+            grid-area: 1 / 1;
+            justify-self: center;
+        }
     }
 
-    // Off: knob on the left, text on the right in the label colour (over the lighter Off fill).
-    .toggle-slicer__inner-label--off {
-        justify-self: end;
-        padding: 0 calc(var(--toggle-track-height) * 0.4) 0 calc(var(--toggle-track-height) * 1.2);
-        color: var(--toggle-label-font-color, #605e5c);
+    .toggle-slicer__layer {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        pointer-events: none;
+        transition: clip-path 0.15s ease-in-out;
     }
 
-    // On: text on the left in the knob's colour (over the On fill), knob on the right.
-    .toggle-slicer__inner-label--on {
-        justify-self: start;
-        padding: 0 calc(var(--toggle-track-height) * 1.2) 0 calc(var(--toggle-track-height) * 0.4);
-        color: var(--toggle-knob-color-on, #ffffff);
+    // Off text over the lighter Off fill uses the State Label's font colour; On text over the On
+    // fill uses the handle's On colour (white by default), so it stays legible on the theme colour.
+    .toggle-slicer__layer--off {
+        padding-left: var(--toggle-reach);
+        clip-path: inset(0 0 0 100%);
+
+        .toggle-slicer__inner-label {
+            color: var(--toggle-label-font-color, #605e5c);
+        }
     }
 
-    &.is-off .toggle-slicer__inner-label--off,
-    &.is-on .toggle-slicer__inner-label--on {
-        visibility: visible;
+    .toggle-slicer__layer--on {
+        padding-right: var(--toggle-reach);
+        clip-path: inset(0 100% 0 0);
+
+        .toggle-slicer__inner-label {
+            color: var(--toggle-knob-color-on, #ffffff);
+        }
+    }
+
+    &.is-off .toggle-slicer__layer--off {
+        clip-path: inset(0 0 0 var(--toggle-reach));
+    }
+
+    &.is-on .toggle-slicer__layer--on {
+        clip-path: inset(0 var(--toggle-reach) 0 0);
     }
 
     &.is-on .toggle-slicer__knob {
         transform: none;
-        left: calc(100% - var(--toggle-knob-size));
+        left: calc(100% - var(--toggle-knob-size) - var(--toggle-effective-padding));
     }
 
     &.is-mixed .toggle-slicer__knob {
@@ -573,26 +633,22 @@
     }
 }
 
-// "3D depth" option, knob half: a sheen gradient plus a stronger drop shadow makes it look like a
+// "3D effect" option, handle half: a sheen gradient plus a stronger drop shadow makes it look like a
 // raised, glossy button rather than a flat disc, with the shadow lifting further on hover to match
 // the switch-level hover lift above.
 .toggle-slicer__switch.is-depth .toggle-slicer__knob {
     background-image: linear-gradient(to bottom, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0) 40%, rgba(0, 0, 0, 0.08));
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.35), 0 1px 1px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+    --hd-base-shadow: 0 2px 4px rgba(0, 0, 0, 0.35), 0 1px 1px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
 .toggle-slicer__switch.is-depth:hover:not(.is-readonly):not(.is-disabled) .toggle-slicer__knob {
-    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+    --hd-base-shadow: 0 3px 6px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
 // Checkbox skin's track: a rounded square (scaled off the same --toggle-track-height as the toggle
 // skin, so it stays proportional at any Size setting) instead of a pill, with the sliding knob
 // hidden - background-color/border/is-depth gradient all still come from the same rules above,
 // since they target .toggle-slicer__track generically rather than anything skin-specific.
-.toggle-slicer__switch.is-checkbox .toggle-slicer__track {
-    border-radius: calc(var(--toggle-track-height) * 0.2);
-}
-
 .toggle-slicer__switch.is-checkbox .toggle-slicer__knob {
     display: none;
 }
@@ -600,14 +656,15 @@
 // Checkbox skin's "on"/"mixed" mark. Hidden entirely outside is-checkbox (including for the other
 // skins, where the element still exists in the DOM - see buildRow() in visual.ts); faded/scaled in
 // and out with is-on/is-mixed the same way the toggle skin's knob slides, rather than an abrupt
-// show/hide. The tick shows for On, the dash for a Mixed master row.
+// show/hide. The tick shows for On, the dash for a Mixed master row. Its size is the track's inner
+// size less the toggle's padding and the Handle's padding (at least 4px).
 .toggle-slicer__checkmark {
     display: none;
     position: absolute;
     inset: 0;
     margin: auto;
-    width: 60%;
-    height: 60%;
+    width: calc(var(--toggle-dot-size) * 1.3);
+    height: calc(var(--toggle-dot-size) * 1.3);
     color: var(--toggle-knob-color-on, #ffffff);
     opacity: 0;
     transform: scale(0.5);
@@ -639,26 +696,22 @@
     }
 }
 
-// "3D depth" option, checkbox skin: a drop shadow under the checkmark itself, echoing the extra
+// "3D effect" option, checkbox skin: a drop shadow under the checkmark itself, echoing the extra
 // shadow layers is-depth already adds to the toggle skin's knob.
 .toggle-slicer__switch.is-depth.is-checkbox .toggle-slicer__checkmark {
     filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.35));
 }
 
 // Radio skin: a circular track, with the toggle skin's own knob reused as the centre dot - centred
-// (inset 0 + auto margins) at half the track's inner size, scaling in when On instead of sliding.
-// Reusing the knob rather than a separate element is what gives the radio skin the exact same
-// colours, border ring and is-depth sheen/shadow as the other two skins with no extra rules, and
-// the more specific selectors here win over the toggle skin's own knob size/translateX.
-.toggle-slicer__switch.is-radio .toggle-slicer__track {
-    border-radius: 50%;
-}
-
+// (inset 0 + auto margins), sized like the checkmark, scaling in when On instead of sliding. Reusing
+// the knob rather than a separate element is what gives the radio skin the exact same colours,
+// border and is-depth sheen/shadow as the other two skins with no extra rules, and the more specific
+// selectors here win over the toggle skin's own knob size/translateX.
 .toggle-slicer__switch.is-radio .toggle-slicer__knob {
     inset: 0;
     margin: auto;
-    width: 50%;
-    height: 50%;
+    width: var(--toggle-dot-size);
+    height: var(--toggle-dot-size);
     opacity: 0;
     transform: scale(0.3);
 }

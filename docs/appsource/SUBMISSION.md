@@ -97,8 +97,9 @@ HIGHLIGHTS
 • Only one active - pick-one-lens behavior for radio-style groups
 • Master switch - turn every toggle On or Off, with a mixed state
 • Group enable - grey out the whole group without losing each toggle's state
-• Border and background styles - flat, embossed or gutter, with colors, corners and padding
-• Names, state labels and title with your own text, fonts and alignment
+• Style every layer - the group, its label, each toggle and its handle, and the labels each get their own background, border (flat, embossed or sunken), corner radius and padding
+• Switch text that stays put while the handle wipes it in and out
+• Toggle labels, state labels and a group label with your own text, fonts and alignment
 • Responsive sizing that fills the visual, or a fixed size
 • Follows your report theme, supports Windows High Contrast, and is fully keyboard and screen-reader accessible
 

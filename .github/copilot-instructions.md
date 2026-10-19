@@ -13,7 +13,7 @@ not bugs:
 - The `toggle` role's `dataReductionAlgorithm` is capped at 10000, not 2 per field, on purpose -
   the group table's columns arrive as every combination (2^N rows), and a mis-bound field must still
   surface its extra values to fail validation.
-- `stateLabels.onText`/`offText` values (and placeholders) are deliberately NOT
+- `stateLabel.onText`/`offText` values (and placeholders) are deliberately NOT
   localized — they're per-report Format-pane text, not fixed visual chrome.
 - `capabilities.json`'s own `displayName`/`description` strings are a non-localizable
   schema declaration; `settings.ts`'s `displayNameKey`/`descriptionKey` is what actually

@@ -101,25 +101,25 @@ Text boxes only (and the visual's icon if you like):
 
 ### 2. One toggle
 
-- **Toggle Slicer**: `'Targets Toggle'[Show targets]` in **Toggles**. Format: **Toggle names → Show** off; **Title → Text** "Show targets", **Alignment** Center; **State labels → Show** on, **Position** Right.
+- **Toggle Slicer**: `'Targets Toggle'[Show targets]` in **Toggles**. Format: **Toggle Label → Show** off; **Toggle Group Label → Text** "Show targets", **Alignment** Center; **State Label → Show** on, **Position** Right.
 - **Line and clustered column chart:** Month on the axis, `Total Sales` as columns, `Targets (page 2)` as the line.
 - Try: click the toggle and the target line appears and disappears.
 
 ### 3. Toggle group
 
-- **Toggle Slicer**: the three `'Display Options'` columns in **Toggles**. Format: **Group behavior → Master switch** on, label "All options"; **Border & background → Border → Style** Embossed.
+- **Toggle Slicer**: the three `'Display Options'` columns in **Toggles**. Format: **Group Behavior → Master switch** on, label "All options"; **Toggle Group → Border → Style** Embossed.
 - **Line chart:** `Net Sales (group)`, `Targets (group)`, `Forecast (group)` by Month.
 - Try: switch toggles individually, then use the master switch (note the half-way mixed state).
 
 ### 4. Radio and only one active
 
-- **Toggle Slicer**: the three `'Measure Lens'` columns in **Toggles**. Format: **Controls → Control style** Radio; **Group behavior → Only one active** on; **Title → Text** "Show".
+- **Toggle Slicer**: the three `'Measure Lens'` columns in **Toggles**. Format: **Toggle → Control style** Radio; **Group Behavior → Only one active** on; **Toggle Group Label → Text** "Show".
 - **Column chart:** `Lens Value` by Month. **Card:** `Lens Value`.
 - Try: pick each option; the radio can't be cleared (use a Master switch to allow clearing).
 
 ### 5. Group enable
 
-- **Toggle Slicer**: `'Gated Options'[Options enabled]` in **Group enable** and the two other columns in **Toggles**. Format: **Border & background → Border → Style** Gutter; **Controls → 3D effect** on.
+- **Toggle Slicer**: `'Gated Options'[Options enabled]` in **Group enable** and the two other columns in **Toggles**. Format: **Toggle Group → Border → Style** Sunken; **Toggle → 3D effect** on.
 - **Line chart:** `Gated Targets` and `Gated Forecast` by Month.
 - Try: switch Group enable off. The toggles grey out and the lines vanish, but switch it back on and each toggle's state is still there.
 
@@ -127,12 +127,12 @@ Text boxes only (and the visual's icon if you like):
 
 Four small copies of the same group (`'Display Options'`), each with a different look, labelled with text boxes:
 
-1. Toggle, State labels → Position **Inside switch**.
-2. Checkbox, Border style **Flat**.
-3. Radio, Only one active, Border style **Embossed**.
-4. Toggle with **3D effect**, custom On/Off colors, Border style **Gutter**.
+1. Toggle, State Label → Show on, Position **Inside switch** (the text stays put while the handle wipes it).
+2. Checkbox, Toggle Group → Border style **Flat**.
+3. Radio, Only one active, Toggle Group → Border style **Embossed**.
+4. Toggle with **3D effect**, custom On/Off colors, Toggle Group → Border style **Sunken**.
 
-Add a fifth small copy using **Layout → Row alignment → Justify** to show the aligned columns.
+Add a fifth small copy using **Toggle Group → Row alignment → Justify** to show the aligned columns.
 
 ### 7. Hints (last page)
 
@@ -142,7 +142,7 @@ Short tips, and things to avoid:
 - Compare to `"On"` in measures. Every toggle starts Off (Group enable starts On) until clicked.
 - Rename a toggle with **Rename for this visual** on the field in the well.
 - The title is this visual's own; turn off Power BI's General → Title to avoid two.
-- For a single toggle: **Toggle names → Show** off, **Title → Alignment** Center.
+- For a single toggle: **Toggle Label → Show** off, **Toggle Group Label → Alignment** Center.
 - Use **View → Sync slicers** to keep a group in step across pages. Bookmarks restore every toggle.
 - Avoid: binding a real column (it needs exactly two values, On/Off, True/False or 1/0), and binding the same column twice.
 - Group enable disables the toggles; it doesn't change your numbers until your measures check it.
