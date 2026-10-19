@@ -4,7 +4,7 @@
             "displayName": "Toggles",
             "name": "toggle",
             "kind": "Grouping",
-            "description": "One On/Off column per toggle (e.g. \"On\"/\"Off\", \"True\"/\"False\" or 1/0), normally all from the same group table. Drop a column in and a new empty slot appears below it for the next toggle."
+            "description": "One On/Off column per toggle (\"On\"/\"Off\", \"True\"/\"False\" or 1/0). Add one column for a single toggle, or several - normally from the same group table - for a group. A new empty slot appears below each column."
         },
         {
             "displayName": "Group enable",
@@ -15,11 +15,35 @@
     ],
     "dataViewMappings": [
         {
-            "conditions": [{ "toggle": { "max": 12 }, "groupEnable": { "max": 1 } }],
+            "conditions": [
+                {
+                    "toggle": {
+                        "max": 12
+                    },
+                    "groupEnable": {
+                        "max": 1
+                    }
+                }
+            ],
             "categorical": {
                 "categories": {
-                    "select": [{ "for": { "in": "groupEnable" } }, { "for": { "in": "toggle" } }],
-                    "dataReductionAlgorithm": { "top": { "count": 10000 } }
+                    "select": [
+                        {
+                            "for": {
+                                "in": "groupEnable"
+                            }
+                        },
+                        {
+                            "for": {
+                                "in": "toggle"
+                            }
+                        }
+                    ],
+                    "dataReductionAlgorithm": {
+                        "top": {
+                            "count": 10000
+                        }
+                    }
                 }
             }
         }
@@ -28,367 +52,602 @@
         "general": {
             "displayName": "General",
             "properties": {
-                "filter": { "type": { "filter": true } }
-            }
-        },
-        "groupSettings": {
-            "displayName": "Group rules",
-            "properties": {
-                "onlyOneActive": {
-                    "displayName": "Only one active",
-                    "description": "Turning a toggle On turns every other toggle in the group Off.",
-                    "type": { "bool": true }
-                },
-                "masterSwitch": {
-                    "displayName": "Master switch",
-                    "description": "Add a master toggle to the top of the group. Turning it On or Off does the same to every toggle below it.",
-                    "type": { "bool": true }
-                },
-                "masterLabel": {
-                    "displayName": "Master label",
-                    "description": "Name shown next to the master toggle.",
-                    "type": { "text": true }
-                },
-                "indent": {
-                    "displayName": "Indent",
-                    "description": "Pixels each level of toggles is indented below a master or Group enable toggle.",
-                    "type": { "numeric": true }
-                },
-                "rowSpacing": {
-                    "displayName": "Row spacing",
-                    "description": "Space in pixels between toggle rows.",
-                    "type": { "numeric": true }
+                "filter": {
+                    "type": {
+                        "filter": true
+                    }
                 }
             }
         },
-        "toggleSettings": {
-            "displayName": "Toggle Settings",
+        "controls": {
+            "displayName": "Controls",
             "properties": {
                 "controlStyle": {
                     "displayName": "Control style",
-                    "description": "Draw each toggle as a sliding Toggle switch, a square Checkbox, or a round Radio button.",
+                    "description": "Draw each toggle as a sliding switch, a checkbox or a radio button.",
                     "type": {
                         "enumeration": [
-                            { "displayName": "Toggle", "value": "toggle" },
-                            { "displayName": "Checkbox", "value": "checkbox" },
-                            { "displayName": "Radio", "value": "radio" }
+                            {
+                                "displayName": "Toggle",
+                                "value": "toggle"
+                            },
+                            {
+                                "displayName": "Checkbox",
+                                "value": "checkbox"
+                            },
+                            {
+                                "displayName": "Radio",
+                                "value": "radio"
+                            }
                         ]
+                    }
+                },
+                "depthEffect": {
+                    "displayName": "3D effect",
+                    "description": "Give each control a raised, glossy look.",
+                    "type": {
+                        "bool": true
                     }
                 },
                 "onColor": {
-                    "displayName": "On colour",
-                    "description": "Fill colour of each toggle when it is On.",
-                    "type": { "fill": { "solid": { "color": true } } }
+                    "displayName": "On color",
+                    "description": "Fill color when On. Follows the report theme until you pick one.",
+                    "type": {
+                        "fill": {
+                            "solid": {
+                                "color": true
+                            }
+                        }
+                    }
                 },
                 "offColor": {
-                    "displayName": "Off colour",
-                    "description": "Fill colour of each toggle when it is Off.",
-                    "type": { "fill": { "solid": { "color": true } } }
-                },
-                "onLabel": {
-                    "displayName": "On label",
-                    "description": "State text shown next to a toggle when it is On.",
-                    "type": { "text": true }
-                },
-                "offLabel": {
-                    "displayName": "Off label",
-                    "description": "State text shown next to a toggle when it is Off.",
-                    "type": { "text": true }
-                },
-                "showLabels": {
-                    "displayName": "Show labels",
-                    "description": "Show On/Off state text next to each toggle when there's room for it. Turn off to always hide it.",
-                    "type": { "bool": true }
-                },
-                "labelPosition": {
-                    "displayName": "Label position",
-                    "description": "Show the current state's text to the left or right of each toggle (Label left / Label right), centred above it (Above), or inside the switch opposite the knob (Inside switch - toggle style only; checkboxes and radios show it on the right).",
+                    "displayName": "Off color",
+                    "description": "Fill color when Off.",
                     "type": {
-                        "enumeration": [
-                            { "displayName": "Label left", "value": "inline-left" },
-                            { "displayName": "Label right", "value": "inline-right" },
-                            { "displayName": "Above", "value": "above" },
-                            { "displayName": "Inside switch", "value": "inside" }
-                        ]
+                        "fill": {
+                            "solid": {
+                                "color": true
+                            }
+                        }
                     }
                 },
-                "labelSpacing": {
-                    "displayName": "Label spacing",
-                    "description": "Space in pixels between the switch and its label(s).",
-                    "type": { "numeric": true }
-                },
-                "labelFontFamily": {
-                    "displayName": "Font family",
-                    "description": "Font of the On/Off label text.",
-                    "type": { "formatting": { "fontFamily": true } }
-                },
-                "labelFontSize": {
-                    "displayName": "Font size",
-                    "description": "Size in pixels of the On/Off label text.",
-                    "type": { "formatting": { "fontSize": true } }
-                },
-                "labelFontBold": {
-                    "displayName": "Bold",
-                    "type": { "bool": true }
-                },
-                "labelFontItalic": {
-                    "displayName": "Italic",
-                    "type": { "bool": true }
-                },
-                "labelFontUnderline": {
-                    "displayName": "Underline",
-                    "type": { "bool": true }
-                },
-                "labelFontColor": {
-                    "displayName": "Font colour",
-                    "description": "Colour of the On/Off label text.",
-                    "type": { "fill": { "solid": { "color": true } } }
-                },
-                "showBorder": {
-                    "displayName": "Show border",
-                    "description": "Show a coloured border around each toggle's track. Off by default.",
-                    "type": { "bool": true }
-                },
-                "borderColor": {
-                    "displayName": "Border colour",
-                    "description": "Colour of each toggle track's border, shown when Show border is on.",
-                    "type": { "fill": { "solid": { "color": true } } }
-                },
-                "borderWidth": {
-                    "displayName": "Border width",
-                    "description": "Width in pixels of each toggle track's border, shown when Show border is on.",
-                    "type": { "numeric": true }
-                },
-                "depthEffect": {
-                    "displayName": "Make it fancy!",
-                    "description": "Give every toggle a raised, glossy look with shading and shadows instead of a flat fill.",
-                    "type": { "bool": true }
-                }
-            }
-        },
-        "nameSettings": {
-            "displayName": "Toggle names",
-            "properties": {
-                "show": {
-                    "displayName": "Show names",
-                    "description": "Show each toggle's name (its field name - rename it in the field well to change it).",
-                    "type": { "bool": true }
-                },
-                "position": {
-                    "displayName": "Name position",
-                    "description": "Show each name to the left or right of its toggle.",
-                    "type": {
-                        "enumeration": [
-                            { "displayName": "Left", "value": "left" },
-                            { "displayName": "Right", "value": "right" }
-                        ]
-                    }
-                },
-                "alignment": {
-                    "displayName": "Alignment",
-                    "description": "Pack names and toggles to the Left, Center or Right of the container, or Justify them to opposite edges.",
-                    "type": {
-                        "enumeration": [
-                            { "displayName": "Left", "value": "left" },
-                            { "displayName": "Center", "value": "center" },
-                            { "displayName": "Right", "value": "right" },
-                            { "displayName": "Justify", "value": "justify" }
-                        ]
-                    }
-                },
-                "spacing": {
-                    "displayName": "Name spacing",
-                    "description": "Space in pixels between each name and its toggle.",
-                    "type": { "numeric": true }
-                },
-                "nameFontFamily": {
-                    "displayName": "Font family",
-                    "description": "Font of the toggle names.",
-                    "type": { "formatting": { "fontFamily": true } }
-                },
-                "nameFontSize": {
-                    "displayName": "Font size",
-                    "description": "Size in pixels of the toggle names.",
-                    "type": { "formatting": { "fontSize": true } }
-                },
-                "nameFontBold": {
-                    "displayName": "Bold",
-                    "type": { "bool": true }
-                },
-                "nameFontItalic": {
-                    "displayName": "Italic",
-                    "type": { "bool": true }
-                },
-                "nameFontUnderline": {
-                    "displayName": "Underline",
-                    "type": { "bool": true }
-                },
-                "fontColor": {
-                    "displayName": "Font colour",
-                    "description": "Colour of the toggle names.",
-                    "type": { "fill": { "solid": { "color": true } } }
-                }
-            }
-        },
-        "containerSettings": {
-            "displayName": "Container",
-            "properties": {
-                "borderStyle": {
-                    "displayName": "Border style",
-                    "description": "Border drawn around the whole group: None, Flat (a plain line), Embossed (raised) or Gutter (recessed).",
-                    "type": {
-                        "enumeration": [
-                            { "displayName": "None", "value": "none" },
-                            { "displayName": "Flat", "value": "flat" },
-                            { "displayName": "Embossed", "value": "embossed" },
-                            { "displayName": "Gutter", "value": "gutter" }
-                        ]
-                    }
-                },
-                "borderColor": {
-                    "displayName": "Border colour",
-                    "description": "Colour of the group's border.",
-                    "type": { "fill": { "solid": { "color": true } } }
-                },
-                "borderWidth": {
-                    "displayName": "Border width",
-                    "description": "Width in pixels of the group's border.",
-                    "type": { "numeric": true }
-                },
-                "cornerRadius": {
-                    "displayName": "Corner radius",
-                    "description": "Roundness in pixels of the group's corners.",
-                    "type": { "numeric": true }
-                },
-                "padding": {
-                    "displayName": "Padding",
-                    "description": "Space in pixels between the group's border and its contents.",
-                    "type": { "numeric": true }
-                },
-                "verticalAlignment": {
-                    "displayName": "Vertical alignment",
-                    "description": "Where the title and toggles sit vertically inside the container.",
-                    "type": {
-                        "enumeration": [
-                            { "displayName": "Top", "value": "top" },
-                            { "displayName": "Middle", "value": "middle" },
-                            { "displayName": "Bottom", "value": "bottom" }
-                        ]
-                    }
-                },
-                "showBackground": {
-                    "displayName": "Show group background",
-                    "description": "Fill a background inside the group's container. Off by default so the visual shows through the report's own card/canvas background. Separate from Power BI's own native General → Background.",
-                    "type": { "bool": true }
-                },
-                "backgroundColor": {
-                    "displayName": "Group background colour",
-                    "description": "Fill colour inside the group's container, shown when Show group background is on.",
-                    "type": { "fill": { "solid": { "color": true } } }
-                }
-            }
-        },
-        "titleSettings": {
-            "displayName": "Title",
-            "properties": {
-                "text": {
-                    "displayName": "Title text",
-                    "description": "Static heading text this visual renders itself, above or beside the group. Leave blank to show no title.",
-                    "type": { "text": true }
-                },
-                "position": {
-                    "displayName": "Title position",
-                    "description": "Show the title before the group (Inline left), after it (Inline right), or above it (Above).",
-                    "type": {
-                        "enumeration": [
-                            { "displayName": "Inline left", "value": "inline-left" },
-                            { "displayName": "Inline right", "value": "inline-right" },
-                            { "displayName": "Above", "value": "above" }
-                        ]
-                    }
-                },
-                "alignment": {
-                    "displayName": "Alignment",
-                    "description": "Position of the title+group assembly within the container: Left, Center, Right, or Justify (spread the title and group to opposite ends).",
-                    "type": {
-                        "enumeration": [
-                            { "displayName": "Left", "value": "left" },
-                            { "displayName": "Center", "value": "center" },
-                            { "displayName": "Right", "value": "right" },
-                            { "displayName": "Justify", "value": "justify" }
-                        ]
-                    }
-                },
-                "spacing": {
-                    "displayName": "Title spacing",
-                    "description": "Space in pixels between the title and the group.",
-                    "type": { "numeric": true }
-                },
-                "titleFontFamily": {
-                    "displayName": "Font family",
-                    "description": "Font of the title text.",
-                    "type": { "formatting": { "fontFamily": true } }
-                },
-                "titleFontSize": {
-                    "displayName": "Font size",
-                    "description": "Size in pixels of the title text.",
-                    "type": { "formatting": { "fontSize": true } }
-                },
-                "titleFontBold": {
-                    "displayName": "Bold",
-                    "type": { "bool": true }
-                },
-                "titleFontItalic": {
-                    "displayName": "Italic",
-                    "type": { "bool": true }
-                },
-                "titleFontUnderline": {
-                    "displayName": "Underline",
-                    "type": { "bool": true }
-                },
-                "fontColor": {
-                    "displayName": "Font colour",
-                    "description": "Colour of the title text.",
-                    "type": { "fill": { "solid": { "color": true } } }
-                }
-            }
-        },
-        "sizeSettings": {
-            "displayName": "Size",
-            "properties": {
-                "mode": {
+                "sizeMode": {
                     "displayName": "Size mode",
-                    "description": "Scale the toggles fluidly with the tile's height and number of rows, between Min/Max height (Responsive), or lock them to one Fixed height.",
+                    "description": "Responsive scales the controls with the visual's height; Fixed uses one exact height.",
                     "type": {
                         "enumeration": [
-                            { "displayName": "Responsive", "value": "responsive" },
-                            { "displayName": "Fixed", "value": "fixed" }
+                            {
+                                "displayName": "Responsive",
+                                "value": "responsive"
+                            },
+                            {
+                                "displayName": "Fixed",
+                                "value": "fixed"
+                            }
                         ]
                     }
                 },
                 "minHeight": {
-                    "displayName": "Min height",
-                    "description": "Smallest height in pixels each toggle scales down to in Responsive mode. Width follows at a fixed ratio (2:1 toggle, 1:1 checkbox/radio).",
-                    "type": { "numeric": true }
+                    "displayName": "Minimum height",
+                    "description": "Smallest control height in pixels (Responsive). Width follows automatically.",
+                    "type": {
+                        "numeric": true
+                    }
                 },
                 "maxHeight": {
-                    "displayName": "Max height",
-                    "description": "Largest height in pixels each toggle scales up to in Responsive mode. Width follows at a fixed ratio (2:1 toggle, 1:1 checkbox/radio).",
-                    "type": { "numeric": true }
+                    "displayName": "Maximum height",
+                    "description": "Largest control height in pixels (Responsive). Width follows automatically.",
+                    "type": {
+                        "numeric": true
+                    }
                 },
                 "fixedHeight": {
-                    "displayName": "Fixed height",
-                    "description": "Exact height in pixels each toggle is drawn at in Fixed mode, regardless of tile size. Width follows at a fixed ratio (2:1 toggle, 1:1 checkbox/radio).",
-                    "type": { "numeric": true }
+                    "displayName": "Height",
+                    "description": "Exact control height in pixels (Fixed). Width follows automatically.",
+                    "type": {
+                        "numeric": true
+                    }
+                },
+                "showOutline": {
+                    "displayName": "Outline",
+                    "description": "Draw an outline around each control.",
+                    "type": {
+                        "bool": true
+                    }
+                },
+                "outlineColor": {
+                    "displayName": "Color",
+                    "description": "Color of each control's outline.",
+                    "type": {
+                        "fill": {
+                            "solid": {
+                                "color": true
+                            }
+                        }
+                    }
+                },
+                "outlineWidth": {
+                    "displayName": "Width",
+                    "description": "Width in pixels of each control's outline.",
+                    "type": {
+                        "numeric": true
+                    }
+                }
+            }
+        },
+        "stateLabels": {
+            "displayName": "State labels",
+            "properties": {
+                "show": {
+                    "displayName": "Show",
+                    "description": "Show the On/Off text next to each control.",
+                    "type": {
+                        "bool": true
+                    }
+                },
+                "onText": {
+                    "displayName": "On text",
+                    "description": "Text shown when a toggle is On.",
+                    "type": {
+                        "text": true
+                    }
+                },
+                "offText": {
+                    "displayName": "Off text",
+                    "description": "Text shown when a toggle is Off.",
+                    "type": {
+                        "text": true
+                    }
+                },
+                "position": {
+                    "displayName": "Position",
+                    "description": "Where the text for the current state sits. Inside switch applies to the Toggle style only; checkboxes and radios show it on the right.",
+                    "type": {
+                        "enumeration": [
+                            {
+                                "displayName": "Left",
+                                "value": "inline-left"
+                            },
+                            {
+                                "displayName": "Right",
+                                "value": "inline-right"
+                            },
+                            {
+                                "displayName": "Above",
+                                "value": "above"
+                            },
+                            {
+                                "displayName": "Inside switch",
+                                "value": "inside"
+                            }
+                        ]
+                    }
+                },
+                "spacing": {
+                    "displayName": "Spacing",
+                    "description": "Space in pixels between a control and its state text.",
+                    "type": {
+                        "numeric": true
+                    }
+                },
+                "fontFamily": {
+                    "displayName": "Font family",
+                    "type": {
+                        "formatting": {
+                            "fontFamily": true
+                        }
+                    }
+                },
+                "fontSize": {
+                    "displayName": "Font size",
+                    "type": {
+                        "formatting": {
+                            "fontSize": true
+                        }
+                    }
+                },
+                "fontBold": {
+                    "displayName": "Bold",
+                    "type": {
+                        "bool": true
+                    }
+                },
+                "fontItalic": {
+                    "displayName": "Italic",
+                    "type": {
+                        "bool": true
+                    }
+                },
+                "fontUnderline": {
+                    "displayName": "Underline",
+                    "type": {
+                        "bool": true
+                    }
+                },
+                "fontColor": {
+                    "displayName": "Font color",
+                    "description": "Color of the state text.",
+                    "type": {
+                        "fill": {
+                            "solid": {
+                                "color": true
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "names": {
+            "displayName": "Toggle names",
+            "properties": {
+                "show": {
+                    "displayName": "Show",
+                    "description": "Show each toggle's name. Rename the field in the Toggles well to change it.",
+                    "type": {
+                        "bool": true
+                    }
+                },
+                "position": {
+                    "displayName": "Position",
+                    "description": "Show each name to the left or right of its control.",
+                    "type": {
+                        "enumeration": [
+                            {
+                                "displayName": "Left",
+                                "value": "left"
+                            },
+                            {
+                                "displayName": "Right",
+                                "value": "right"
+                            }
+                        ]
+                    }
+                },
+                "spacing": {
+                    "displayName": "Spacing",
+                    "description": "Space in pixels between a name and its control.",
+                    "type": {
+                        "numeric": true
+                    }
+                },
+                "fontFamily": {
+                    "displayName": "Font family",
+                    "type": {
+                        "formatting": {
+                            "fontFamily": true
+                        }
+                    }
+                },
+                "fontSize": {
+                    "displayName": "Font size",
+                    "type": {
+                        "formatting": {
+                            "fontSize": true
+                        }
+                    }
+                },
+                "fontBold": {
+                    "displayName": "Bold",
+                    "type": {
+                        "bool": true
+                    }
+                },
+                "fontItalic": {
+                    "displayName": "Italic",
+                    "type": {
+                        "bool": true
+                    }
+                },
+                "fontUnderline": {
+                    "displayName": "Underline",
+                    "type": {
+                        "bool": true
+                    }
+                },
+                "fontColor": {
+                    "displayName": "Font color",
+                    "description": "Color of the toggle names.",
+                    "type": {
+                        "fill": {
+                            "solid": {
+                                "color": true
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "behavior": {
+            "displayName": "Group behavior",
+            "properties": {
+                "onlyOneActive": {
+                    "displayName": "Only one active",
+                    "description": "Turning a toggle On turns every other toggle Off.",
+                    "type": {
+                        "bool": true
+                    }
+                },
+                "masterSwitch": {
+                    "displayName": "Master switch",
+                    "description": "Add a toggle above the group that turns every toggle On or Off.",
+                    "type": {
+                        "bool": true
+                    }
+                },
+                "masterLabel": {
+                    "displayName": "Master label",
+                    "description": "Name shown beside the master switch. Shows \"All\" until you set your own.",
+                    "type": {
+                        "text": true
+                    }
+                }
+            }
+        },
+        "layout": {
+            "displayName": "Layout",
+            "properties": {
+                "rowAlignment": {
+                    "displayName": "Row alignment",
+                    "description": "Pack the rows to the Left, Center or Right, or Justify names and controls to opposite edges.",
+                    "type": {
+                        "enumeration": [
+                            {
+                                "displayName": "Left",
+                                "value": "left"
+                            },
+                            {
+                                "displayName": "Center",
+                                "value": "center"
+                            },
+                            {
+                                "displayName": "Right",
+                                "value": "right"
+                            },
+                            {
+                                "displayName": "Justify",
+                                "value": "justify"
+                            }
+                        ]
+                    }
+                },
+                "rowSpacing": {
+                    "displayName": "Row spacing",
+                    "description": "Space in pixels between rows.",
+                    "type": {
+                        "numeric": true
+                    }
+                },
+                "indent": {
+                    "displayName": "Indent",
+                    "description": "Pixels each level is indented below a master switch or Group enable toggle.",
+                    "type": {
+                        "numeric": true
+                    }
+                },
+                "verticalAlignment": {
+                    "displayName": "Vertical alignment",
+                    "description": "Where the title and rows sit vertically inside the visual.",
+                    "type": {
+                        "enumeration": [
+                            {
+                                "displayName": "Top",
+                                "value": "top"
+                            },
+                            {
+                                "displayName": "Middle",
+                                "value": "middle"
+                            },
+                            {
+                                "displayName": "Bottom",
+                                "value": "bottom"
+                            }
+                        ]
+                    }
+                },
+                "padding": {
+                    "displayName": "Padding",
+                    "description": "Space in pixels between the border and the contents.",
+                    "type": {
+                        "numeric": true
+                    }
+                }
+            }
+        },
+        "title": {
+            "displayName": "Title",
+            "properties": {
+                "show": {
+                    "displayName": "Show",
+                    "description": "Show a title above or beside the group. Separate from Power BI's own General > Title.",
+                    "type": {
+                        "bool": true
+                    }
+                },
+                "text": {
+                    "displayName": "Text",
+                    "description": "Title text. Shows \"Toggle group\" until you set your own.",
+                    "type": {
+                        "text": true
+                    }
+                },
+                "position": {
+                    "displayName": "Position",
+                    "description": "Show the title above the group, or to its left or right.",
+                    "type": {
+                        "enumeration": [
+                            {
+                                "displayName": "Above",
+                                "value": "above"
+                            },
+                            {
+                                "displayName": "Left",
+                                "value": "inline-left"
+                            },
+                            {
+                                "displayName": "Right",
+                                "value": "inline-right"
+                            }
+                        ]
+                    }
+                },
+                "alignment": {
+                    "displayName": "Alignment",
+                    "description": "Where the title and group sit inside the visual. Justify pushes them to opposite ends.",
+                    "type": {
+                        "enumeration": [
+                            {
+                                "displayName": "Left",
+                                "value": "left"
+                            },
+                            {
+                                "displayName": "Center",
+                                "value": "center"
+                            },
+                            {
+                                "displayName": "Right",
+                                "value": "right"
+                            },
+                            {
+                                "displayName": "Justify",
+                                "value": "justify"
+                            }
+                        ]
+                    }
+                },
+                "spacing": {
+                    "displayName": "Spacing",
+                    "description": "Space in pixels between the title and the group.",
+                    "type": {
+                        "numeric": true
+                    }
+                },
+                "fontFamily": {
+                    "displayName": "Font family",
+                    "type": {
+                        "formatting": {
+                            "fontFamily": true
+                        }
+                    }
+                },
+                "fontSize": {
+                    "displayName": "Font size",
+                    "type": {
+                        "formatting": {
+                            "fontSize": true
+                        }
+                    }
+                },
+                "fontBold": {
+                    "displayName": "Bold",
+                    "type": {
+                        "bool": true
+                    }
+                },
+                "fontItalic": {
+                    "displayName": "Italic",
+                    "type": {
+                        "bool": true
+                    }
+                },
+                "fontUnderline": {
+                    "displayName": "Underline",
+                    "type": {
+                        "bool": true
+                    }
+                },
+                "fontColor": {
+                    "displayName": "Font color",
+                    "description": "Color of the title.",
+                    "type": {
+                        "fill": {
+                            "solid": {
+                                "color": true
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "frame": {
+            "displayName": "Border & background",
+            "properties": {
+                "borderStyle": {
+                    "displayName": "Style",
+                    "description": "None, Flat (a plain line), Embossed (raised) or Gutter (recessed).",
+                    "type": {
+                        "enumeration": [
+                            {
+                                "displayName": "None",
+                                "value": "none"
+                            },
+                            {
+                                "displayName": "Flat",
+                                "value": "flat"
+                            },
+                            {
+                                "displayName": "Embossed",
+                                "value": "embossed"
+                            },
+                            {
+                                "displayName": "Gutter",
+                                "value": "gutter"
+                            }
+                        ]
+                    }
+                },
+                "borderColor": {
+                    "displayName": "Color",
+                    "description": "Color of the border.",
+                    "type": {
+                        "fill": {
+                            "solid": {
+                                "color": true
+                            }
+                        }
+                    }
+                },
+                "borderWidth": {
+                    "displayName": "Width",
+                    "description": "Width in pixels of the border.",
+                    "type": {
+                        "numeric": true
+                    }
+                },
+                "cornerRadius": {
+                    "displayName": "Corner radius",
+                    "description": "Roundness in pixels of the corners.",
+                    "type": {
+                        "numeric": true
+                    }
+                },
+                "showBackground": {
+                    "displayName": "Show background",
+                    "description": "Fill the area inside the border. Separate from Power BI's own General > Background.",
+                    "type": {
+                        "bool": true
+                    }
+                },
+                "backgroundColor": {
+                    "displayName": "Color",
+                    "description": "Fill color inside the border.",
+                    "type": {
+                        "fill": {
+                            "solid": {
+                                "color": true
+                            }
+                        }
+                    }
                 }
             }
         }
     },
-    "tooltips": { "supportedTypes": { "default": false } },
+    "tooltips": {
+        "supportedTypes": {
+            "default": false
+        }
+    },
     "supportsKeyboardFocus": true,
     "supportsSynchronizingFilterState": true,
     "supportsLandingPage": true,
-    "privileges": [
-
-    ]
+    "privileges": []
 }

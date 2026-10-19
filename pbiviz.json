@@ -1,28 +1,26 @@
 {
-    "visual":  {
-                   "name":  "togglesVisual",
-                   "displayName":  "Toggle Slicer Visuals",
-                   "guid":  "togglesVisual",
-                   "visualClassName":  "Visual",
-                   "version":  "1.0.0.1",
-                   "description":  "A group of on/off toggles (switch, checkbox or radio) that each drive a disconnected-table filter, with optional only-one-active, master switch and group-enable rules.",
-                   "supportUrl":  "https://github.com/hayden-flintoft/toggle-group/issues",
-                   "gitHubUrl":  "https://github.com/hayden-flintoft/toggle-group"
-               },
-    "apiVersion":  "5.11.1",
-    "author":  {
-                   "name":  "Hayden Flintoft",
-                   "email":  "hayden@flintstrike.co.nz"
-               },
-    "assets":  {
-                   "icon":  "assets/icon.png"
-               },
-    "externalJS":  [
-
-                   ],
-    "style":  "style/visual.less",
-    "capabilities":  "capabilities.json",
-    "stringResources":  [
-                            "stringResources/en-US/resources.resjson"
-                        ]
+    "visual": {
+        "name": "toggleSlicer",
+        "displayName": "Toggle Slicer",
+        "guid": "toggleSlicer11DC17E503E54434BF7A4EF24AB80D88",
+        "visualClassName": "Visual",
+        "version": "1.0.0.0",
+        "description": "Turn On/Off columns into switch, checkbox or radio slicers. Use a single toggle or a group, with Only one active, Master switch and Group enable rules. Filters stay readable in DAX and work with bookmarks and Sync slicers.",
+        "supportUrl": "https://github.com/flintstrike-nz/toggle-group/issues",
+        "gitHubUrl": "https://github.com/flintstrike-nz/toggle-group"
+    },
+    "apiVersion": "5.11.1",
+    "author": {
+        "name": "Hayden Flintoft",
+        "email": "hayden@flintstrike.co.nz"
+    },
+    "assets": {
+        "icon": "assets/icon.png"
+    },
+    "externalJS": [],
+    "style": "style/visual.less",
+    "capabilities": "capabilities.json",
+    "stringResources": [
+        "stringResources/en-US/resources.resjson"
+    ]
 }

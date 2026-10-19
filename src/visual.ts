@@ -1,27 +1,6 @@
 /*
- *  Power BI Visual CLI
- *
- *  Copyright (c) Microsoft Corporation
- *  All rights reserved.
- *  MIT License
- *
- *  Permission is hereby granted, free of charge, to any person obtaining a copy
- *  of this software and associated documentation files (the ""Software""), to deal
- *  in the Software without restriction, including without limitation the rights
- *  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- *  copies of the Software, and to permit persons to whom the Software is
- *  furnished to do so, subject to the following conditions:
- *
- *  The above copyright notice and this permission notice shall be included in
- *  all copies or substantial portions of the Software.
- *
- *  THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- *  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- *  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- *  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- *  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- *  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- *  THE SOFTWARE.
+ *  Copyright (c) 2026 Hayden Flintoft
+ *  MIT License - see the LICENSE file in the repository root.
  */
 "use strict";
 
@@ -53,33 +32,41 @@ const OFF_VALUES = new Set(["off", "false", "0"]);
 
 /**
  * Starter DAX shown (with Copy buttons) on the landing page, matching README's own documented
- * example exactly. DAX identifiers aren't localized - like the on/off label values themselves,
+ * examples exactly. DAX identifiers aren't localized - like the on/off label values themselves,
  * they're literal code to paste verbatim, not natural-language UI text.
  *
- * One table per *group*, one column per toggle: each column's name ("Show budget") is what the
- * visual shows as that toggle's name, and each column is its own field in the Toggles well.
- * CROSSJOIN gives the table every On/Off combination, which is what lets each column be filtered
- * independently - filtering "Show budget" to On still leaves both values of every other column.
- * The measures compare against "On" (or "Off" for Group enable) rather than using SELECTEDVALUE's
- * fallback argument, so an unfiltered column - first load, before any click - reads as Off (or
- * enabled) exactly as readStatesFromFilters() renders it.
+ * A single toggle is a one-column table. A group is one table with a column per toggle: each
+ * column's name ("Show targets") is what the visual shows as that toggle's name, and each column
+ * is its own field in the Toggles well. CROSSJOIN gives the group table every On/Off combination,
+ * which is what lets each column be filtered independently - filtering "Show targets" to On still
+ * leaves both values of every other column. The measures compare against "On" (or "Off" for Group
+ * enable) rather than using SELECTEDVALUE's fallback argument, so an unfiltered column - first
+ * load, before any click - reads as Off (or enabled) exactly as readStatesFromFilters() renders it.
  */
-const TOGGLE_TABLE_DAX = `Budget Options =
-CROSSJOIN(
-    DATATABLE("Show budget", STRING, {{"On"}, {"Off"}}),
-    DATATABLE("Include ED", STRING, {{"On"}, {"Off"}}),
-    DATATABLE("Exclude outliers", STRING, {{"On"}, {"Off"}})
-)`;
-const TOGGLE_MEASURE_DAX = `Show Budget State =
+const SINGLE_TABLE_DAX = `Targets Toggle =
+DATATABLE("Show targets", STRING, {{"On"}, {"Off"}})`;
+const SINGLE_MEASURE_DAX = `Show Targets State =
 IF(
-    SELECTEDVALUE('Budget Options'[Show budget]) = "On",
+    SELECTEDVALUE('Targets Toggle'[Show targets]) = "On",
     1,
     0
 )`;
-const GROUP_GATE_DAX = `Show Budget Active =
+const TOGGLE_TABLE_DAX = `Display Options =
+CROSSJOIN(
+    DATATABLE("Show targets", STRING, {{"On"}, {"Off"}}),
+    DATATABLE("Show forecast", STRING, {{"On"}, {"Off"}}),
+    DATATABLE("Include returns", STRING, {{"On"}, {"Off"}})
+)`;
+const TOGGLE_MEASURE_DAX = `Show Targets State =
 IF(
-    SELECTEDVALUE('Budget Options'[Options enabled]) <> "Off",
-    [Show Budget State],
+    SELECTEDVALUE('Display Options'[Show targets]) = "On",
+    1,
+    0
+)`;
+const GROUP_GATE_DAX = `Show Targets Active =
+IF(
+    SELECTEDVALUE('Display Options'[Options enabled]) <> "Off",
+    [Show Targets State],
     0
 )`;
 
@@ -146,7 +133,7 @@ export class Visual implements IVisual {
 
     private items: GroupItem[] = [];
     private rows: RowElements[] = [];
-    // Whether titleSettings.text / groupSettings.masterLabel have ever been explicitly set by a
+    // Whether title.text / behavior.masterLabel have ever been explicitly set by a
     // report author (checked against the raw dataView object, not the populated settings model,
     // which can't tell "never touched" apart from "explicitly cleared to blank") - computed once
     // per update() since render() needs them too.
@@ -174,7 +161,7 @@ export class Visual implements IVisual {
         this.target = options.element;
         this.target.classList.add("toggle-slicer-visual");
 
-        // The bordered box (containerSettings) around everything the group renders - the title
+        // The bordered box (the frame card) around everything the group renders - the title
         // included, like a fieldset around its legend.
         this.frameEl = document.createElement("div");
         this.frameEl.className = "toggle-group-frame";
@@ -387,7 +374,13 @@ export class Visual implements IVisual {
         return landingPageEl;
     }
 
-    /** The copyable "one table per group, a measure per toggle, optional group gate" starter DAX guide - see buildLandingPage(). */
+    /**
+     * The copyable starter-DAX guide: a "One toggle" tab (a one-column table and one measure - the
+     * smallest working setup, shown first) and a "Toggle group" tab (the CROSSJOIN table, a measure
+     * per toggle and the optional Group enable gate). A standard ARIA tablist: the selected tab is
+     * the only Tab stop, and arrow keys/Home/End move between tabs. Which tab is showing is
+     * in-memory only - the landing page is rebuilt blank whenever the visual is re-created.
+     */
     private buildLandingGuide(): HTMLElement {
         const guideEl = document.createElement("div");
         guideEl.className = "toggle-slicer__landing-guide";
@@ -399,14 +392,88 @@ export class Visual implements IVisual {
             return stepEl;
         };
 
-        guideEl.appendChild(step("Visual_LandingPage_GuideTableIntro"));
-        guideEl.appendChild(this.buildCodeBlock(TOGGLE_TABLE_DAX, "Visual_LandingPage_CopyTable_AriaLabel"));
-        guideEl.appendChild(step("Visual_LandingPage_GuideMeasureIntro"));
-        guideEl.appendChild(this.buildCodeBlock(TOGGLE_MEASURE_DAX, "Visual_LandingPage_CopyMeasure_AriaLabel"));
-        guideEl.appendChild(step("Visual_LandingPage_GuideRepeat"));
-        guideEl.appendChild(step("Visual_LandingPage_GuideEnableIntro"));
-        guideEl.appendChild(this.buildCodeBlock(GROUP_GATE_DAX, "Visual_LandingPage_CopyGate_AriaLabel"));
+        const panelBuilders: Array<{ labelKey: string; steps: Array<HTMLElement> }> = [
+            {
+                labelKey: "Visual_LandingPage_Tab_Single",
+                steps: [
+                    step("Visual_LandingPage_GuideSingleTableIntro"),
+                    this.buildCodeBlock(SINGLE_TABLE_DAX, "Visual_LandingPage_CopySingleTable_AriaLabel"),
+                    step("Visual_LandingPage_GuideSingleMeasureIntro"),
+                    this.buildCodeBlock(SINGLE_MEASURE_DAX, "Visual_LandingPage_CopySingleMeasure_AriaLabel"),
+                    step("Visual_LandingPage_GuideSingleDrag")
+                ]
+            },
+            {
+                labelKey: "Visual_LandingPage_Tab_Group",
+                steps: [
+                    step("Visual_LandingPage_GuideTableIntro"),
+                    this.buildCodeBlock(TOGGLE_TABLE_DAX, "Visual_LandingPage_CopyTable_AriaLabel"),
+                    step("Visual_LandingPage_GuideMeasureIntro"),
+                    this.buildCodeBlock(TOGGLE_MEASURE_DAX, "Visual_LandingPage_CopyMeasure_AriaLabel"),
+                    step("Visual_LandingPage_GuideRepeat"),
+                    step("Visual_LandingPage_GuideEnableIntro"),
+                    this.buildCodeBlock(GROUP_GATE_DAX, "Visual_LandingPage_CopyGate_AriaLabel")
+                ]
+            }
+        ];
 
+        const tablistEl = document.createElement("div");
+        tablistEl.className = "toggle-slicer__landing-tabs";
+        tablistEl.setAttribute("role", "tablist");
+        tablistEl.setAttribute("aria-label", this.localizationManager.getDisplayName("Visual_LandingPage_Tabs_AriaLabel"));
+        guideEl.appendChild(tablistEl);
+
+        const tabEls: HTMLButtonElement[] = [];
+        const panelEls: HTMLElement[] = [];
+        const select = (selected: number, moveFocus: boolean): void => {
+            tabEls.forEach((tabEl, index) => {
+                tabEl.setAttribute("aria-selected", String(index === selected));
+                tabEl.tabIndex = index === selected ? 0 : -1;
+                panelEls[index].hidden = index !== selected;
+            });
+            if (moveFocus) {
+                tabEls[selected].focus();
+            }
+        };
+
+        panelBuilders.forEach((def, index) => {
+            const tabId = `${this.titleEl.id}-tab-${index}`;
+            const panelId = `${this.titleEl.id}-panel-${index}`;
+
+            const tabEl = document.createElement("button");
+            tabEl.type = "button";
+            tabEl.className = "toggle-slicer__landing-tab";
+            tabEl.id = tabId;
+            tabEl.setAttribute("role", "tab");
+            tabEl.setAttribute("aria-controls", panelId);
+            tabEl.textContent = this.localizationManager.getDisplayName(def.labelKey);
+            tabEl.addEventListener("click", () => select(index, false));
+            tabEl.addEventListener("keydown", (event: KeyboardEvent) => {
+                const last = panelBuilders.length - 1;
+                const target = event.key === "ArrowRight" ? (index === last ? 0 : index + 1)
+                    : event.key === "ArrowLeft" ? (index === 0 ? last : index - 1)
+                    : event.key === "Home" ? 0
+                    : event.key === "End" ? last
+                    : -1;
+                if (target !== -1) {
+                    event.preventDefault();
+                    select(target, true);
+                }
+            });
+            tablistEl.appendChild(tabEl);
+            tabEls.push(tabEl);
+
+            const panelEl = document.createElement("div");
+            panelEl.className = "toggle-slicer__landing-panel";
+            panelEl.id = panelId;
+            panelEl.setAttribute("role", "tabpanel");
+            panelEl.setAttribute("aria-labelledby", tabId);
+            def.steps.forEach((stepEl) => panelEl.appendChild(stepEl));
+            guideEl.appendChild(panelEl);
+            panelEls.push(panelEl);
+        });
+
+        select(0, false);
         return guideEl;
     }
 
@@ -587,10 +654,10 @@ export class Visual implements IVisual {
             const dataView = options.dataViews && options.dataViews[0];
             this.formattingSettings = this.formattingSettingsService.populateFormattingSettingsModel(VisualFormattingSettingsModel, dataView);
             const objects = dataView && dataView.metadata && dataView.metadata.objects;
-            const titleSettingsObjects = objects && objects["titleSettings"];
-            const groupSettingsObjects = objects && objects["groupSettings"];
-            this.hasCustomTitleText = !!titleSettingsObjects && titleSettingsObjects["text"] !== undefined;
-            this.hasCustomMasterLabel = !!groupSettingsObjects && groupSettingsObjects["masterLabel"] !== undefined;
+            const titleObjects = objects && objects["title"];
+            const behaviorObjects = objects && objects["behavior"];
+            this.hasCustomTitleText = !!titleObjects && titleObjects["text"] !== undefined;
+            this.hasCustomMasterLabel = !!behaviorObjects && behaviorObjects["masterLabel"] !== undefined;
 
             this.applyColors(dataView);
             this.applySize();
@@ -627,16 +694,16 @@ export class Visual implements IVisual {
                 return;
             }
 
-            const groupCard = this.formattingSettings.groupSettingsCard;
+            const behaviorCard = this.formattingSettings.behaviorCard;
             const items: GroupItem[] = [];
             let level = 0;
             if (enableItem) {
                 enableItem.level = level++;
                 items.push(enableItem);
             }
-            if (groupCard.masterSwitch.value) {
+            if (behaviorCard.masterSwitch.value) {
                 const masterLabel = this.hasCustomMasterLabel
-                    ? groupCard.masterLabel.value
+                    ? behaviorCard.masterLabel.value
                     : this.localizationManager.getDisplayName("Visual_MasterLabel_Default");
                 items.push({ kind: "master", name: masterLabel, level: level++, isOn: false, isMixed: false });
             }
@@ -762,24 +829,6 @@ export class Visual implements IVisual {
         return String(value).trim().toLowerCase();
     }
 
-    /**
-     * toggleSettings.labelPosition and titleSettings.position both used to offer only a single
-     * "inline" value (both On/Off labels flanking the switch, or the title before it) before it was
-     * split into "inline-left"/"inline-right". A report saved with the old visual can still have
-     * "inline" persisted in its dataView object - FormattingSettingsService doesn't reset a persisted
-     * value just because it no longer appears in the property's current `items` list, so
-     * card.labelPosition.value.value/titleCard.position.value.value can still read back "inline"
-     * verbatim. Left unhandled, that value matches none of render()'s three classList checks, so no
-     * order override applies at all - for the label specifically, that degrades to "whichever label
-     * is next to the switch in DOM order" (Off before it, On after), i.e. the visible label silently
-     * changes sides depending on state instead of consistently sitting on one side. Treating it as
-     * "inline-left" (both properties' old "inline" behaviour put the relevant text before the switch)
-     * keeps such a report's rendered position unchanged after upgrading.
-     */
-    private normalizeLegacyInlinePosition(value: string | number): string {
-        return value === "inline" ? "inline-left" : String(value);
-    }
-
     /** hostCapabilities.allowInteractions is undefined (not restricted) in the common case, so only an explicit false disables interaction. */
     private interactionsAllowed(): boolean {
         return this.host.hostCapabilities.allowInteractions !== false;
@@ -843,7 +892,7 @@ export class Visual implements IVisual {
         }
         const children = this.childItems;
         const onCount = children.filter((item) => item.isOn).length;
-        if (this.formattingSettings.groupSettingsCard.onlyOneActive.value) {
+        if (this.formattingSettings.behaviorCard.onlyOneActive.value) {
             masterItem.isOn = onCount > 0;
             masterItem.isMixed = false;
         } else {
@@ -932,7 +981,7 @@ export class Visual implements IVisual {
             return;
         }
 
-        const onlyOneActive = this.formattingSettings.groupSettingsCard.onlyOneActive.value;
+        const onlyOneActive = this.formattingSettings.behaviorCard.onlyOneActive.value;
         const changes = new Map<GroupItem, boolean>();
         const children = this.childItems;
 
@@ -974,8 +1023,8 @@ export class Visual implements IVisual {
         // Inside a radiogroup, arrows stay among the radios (and among the headers, from a header),
         // rather than stepping across the radiogroup's boundary into controls outside it.
         const current = this.items[index];
-        const isRadioGroup = this.formattingSettings.groupSettingsCard.onlyOneActive.value
-            && this.formattingSettings.toggleSettingsCard.controlStyle.value.value === "radio";
+        const isRadioGroup = this.formattingSettings.behaviorCard.onlyOneActive.value
+            && this.formattingSettings.controlsCard.controlStyle.value.value === "radio";
         const sameZone = (item: GroupItem) => !isRadioGroup || (item.kind === "toggle") === (current.kind === "toggle");
         const focusable = this.items
             .map((item, itemIndex) => ({ item, itemIndex }))
@@ -1043,7 +1092,7 @@ export class Visual implements IVisual {
      * default".
      */
     private applyColors(dataView: powerbi.DataView | undefined): void {
-        const card = this.formattingSettings.toggleSettingsCard;
+        const card = this.formattingSettings.controlsCard;
         const palette = this.host.colorPalette;
 
         if (palette.isHighContrast) {
@@ -1054,18 +1103,18 @@ export class Visual implements IVisual {
             this.target.style.setProperty("--toggle-knob-color", palette.foreground.value);
             this.target.style.setProperty("--toggle-knob-color-on", palette.foregroundSelected.value);
             this.target.style.setProperty("--toggle-label-color", palette.foreground.value);
-            this.target.style.setProperty("--toggle-border-width", `${card.borderWidth.value}px`);
+            this.target.style.setProperty("--toggle-border-width", `${card.outlineWidth.value}px`);
         } else {
-            const toggleSettingsObjects = dataView && dataView.metadata && dataView.metadata.objects && dataView.metadata.objects["toggleSettings"];
-            const hasCustomOnColor = !!(toggleSettingsObjects && toggleSettingsObjects["onColor"]);
+            const controlsObjects = dataView && dataView.metadata && dataView.metadata.objects && dataView.metadata.objects["controls"];
+            const hasCustomOnColor = !!(controlsObjects && controlsObjects["onColor"]);
             const onColor = hasCustomOnColor ? card.onColor.value.value : palette.getColor("toggleOnColor").value;
-            const borderColor = card.showBorder.value ? card.borderColor.value.value : "transparent";
+            const borderColor = card.showOutline.value ? card.outlineColor.value.value : "transparent";
 
             this.target.style.setProperty("--toggle-off-color", card.offColor.value.value);
             this.target.style.setProperty("--toggle-on-color", onColor);
             this.target.style.setProperty("--toggle-track-border-color", borderColor);
             this.target.style.setProperty("--toggle-track-border-color-on", borderColor);
-            this.target.style.setProperty("--toggle-border-width", `${card.borderWidth.value}px`);
+            this.target.style.setProperty("--toggle-border-width", `${card.outlineWidth.value}px`);
             this.target.style.setProperty("--toggle-knob-color", "#ffffff");
             this.target.style.setProperty("--toggle-knob-color-on", "#ffffff");
             this.target.style.setProperty("--toggle-label-color", "#605e5c");
@@ -1081,7 +1130,7 @@ export class Visual implements IVisual {
      * supplies the three bounds, never a computed size itself.
      */
     private applySize(): void {
-        const card = this.formattingSettings.sizeSettingsCard;
+        const card = this.formattingSettings.controlsCard;
 
         // minHeight/maxHeight are independent NumUpDowns (each just its own 8-200 bound), so a
         // report author can freely set Min above Max - clamp() gives the minimum precedence when its
@@ -1107,14 +1156,14 @@ export class Visual implements IVisual {
      */
     private applyFonts(): void {
         const palette = this.host.colorPalette;
-        const titleCard = this.formattingSettings.titleSettingsCard;
-        const toggleCard = this.formattingSettings.toggleSettingsCard;
-        const nameCard = this.formattingSettings.nameSettingsCard;
+        const titleCard = this.formattingSettings.titleCard;
+        const labelsCard = this.formattingSettings.stateLabelsCard;
+        const namesCard = this.formattingSettings.namesCard;
 
         const fonts: Array<[string, typeof titleCard.font, string]> = [
             ["title", titleCard.font, titleCard.fontColor.value.value],
-            ["label", toggleCard.labelFont, toggleCard.labelFontColor.value.value],
-            ["name", nameCard.font, nameCard.fontColor.value.value]
+            ["label", labelsCard.font, labelsCard.fontColor.value.value],
+            ["name", namesCard.font, namesCard.fontColor.value.value]
         ];
 
         for (const [prefix, font, color] of fonts) {
@@ -1134,19 +1183,20 @@ export class Visual implements IVisual {
      * theme foreground and drops the fill, for the same legibility reason applyColors() does.
      */
     private applyContainer(): void {
-        const card = this.formattingSettings.containerSettingsCard;
+        const card = this.formattingSettings.frameCard;
+        const layout = this.formattingSettings.layoutCard;
         const palette = this.host.colorPalette;
         const borderStyle = String(card.borderStyle.value.value);
 
         this.frameEl.classList.remove("is-border-none", "is-border-flat", "is-border-embossed", "is-border-gutter");
         this.frameEl.classList.add(`is-border-${borderStyle}`);
         this.frameEl.classList.remove("is-valign-top", "is-valign-middle", "is-valign-bottom");
-        this.frameEl.classList.add(`is-valign-${card.verticalAlignment.value.value}`);
+        this.frameEl.classList.add(`is-valign-${layout.verticalAlignment.value.value}`);
 
         this.frameEl.style.setProperty("--toggle-frame-border-color", palette.isHighContrast ? palette.foreground.value : card.borderColor.value.value);
         this.frameEl.style.setProperty("--toggle-frame-border-width", `${card.borderWidth.value}px`);
         this.frameEl.style.setProperty("--toggle-frame-radius", `${card.cornerRadius.value}px`);
-        this.frameEl.style.setProperty("--toggle-frame-padding", `${card.padding.value}px`);
+        this.frameEl.style.setProperty("--toggle-frame-padding", `${layout.padding.value}px`);
         this.frameEl.style.backgroundColor = card.showBackground.value && !palette.isHighContrast ? card.backgroundColor.value.value : "";
     }
 
@@ -1156,7 +1206,7 @@ export class Visual implements IVisual {
      * checkboxes instead, the conventional "select all"/"enable" control above a radio list.
      */
     private skinFor(item: GroupItem): "toggle" | "checkbox" | "radio" {
-        const skin = String(this.formattingSettings.toggleSettingsCard.controlStyle.value.value);
+        const skin = String(this.formattingSettings.controlsCard.controlStyle.value.value);
         if (skin === "radio") {
             return item.kind === "toggle" ? "radio" : "checkbox";
         }
@@ -1167,26 +1217,30 @@ export class Visual implements IVisual {
         this.ensureRowPool();
         this.placeRows();
 
-        const groupCard = this.formattingSettings.groupSettingsCard;
-        const nameCard = this.formattingSettings.nameSettingsCard;
-        const titleCard = this.formattingSettings.titleSettingsCard;
-        const toggleCard = this.formattingSettings.toggleSettingsCard;
+        const behaviorCard = this.formattingSettings.behaviorCard;
+        const layoutCard = this.formattingSettings.layoutCard;
+        const namesCard = this.formattingSettings.namesCard;
+        const titleCard = this.formattingSettings.titleCard;
+        const controlsCard = this.formattingSettings.controlsCard;
 
         // Shows a real, localized default until a report author sets their own text - settings.ts's
         // own static default is deliberately blank so this doesn't fall back to fixed English UI
         // copy outside ILocalizationManager. Once hasCustomTitleText is true (the property has ANY
         // persisted value, including a deliberately-cleared blank one), the report-authored value
-        // always wins, so clearing the field still shows no title.
-        const titleText = this.hasCustomTitleText
-            ? titleCard.text.value
-            : this.localizationManager.getDisplayName("Visual_TitleText_Default");
+        // always wins, so clearing the field still shows no title. The card's Show toggle hides it
+        // outright.
+        const titleText = !titleCard.show.value
+            ? ""
+            : this.hasCustomTitleText
+                ? titleCard.text.value
+                : this.localizationManager.getDisplayName("Visual_Title_Text_Default");
         this.titleEl.textContent = titleText;
         this.titleEl.style.display = titleText ? "" : "none";
 
         // "Inline left" needs no order override - titleEl already comes before groupEl in DOM
         // order. "Inline right" flips that via CSS order; "Above" (the default) stacks them in a
         // column with the title always first/top.
-        const titlePosition = this.normalizeLegacyInlinePosition(titleCard.position.value.value);
+        const titlePosition = String(titleCard.position.value.value);
         this.titleWrapEl.classList.toggle("toggle-slicer-wrap--stacked", titlePosition === "above");
         this.titleWrapEl.classList.toggle("toggle-slicer-wrap--inline-right", titlePosition === "inline-right");
         this.titleWrapEl.style.setProperty("--toggle-title-gap", `${titleCard.spacing.value}px`);
@@ -1200,21 +1254,21 @@ export class Visual implements IVisual {
         // Every names alignment but Left (Center, Right, Justify) moves the rows within the group's
         // width, which only has room to happen once the group (and so titleWrapEl around it) fills
         // the container's width - a shrink-wrapped group has no spare space to center or push into.
-        const namesShown = nameCard.show.value;
-        const nameAlignment = String(nameCard.alignment.value.value);
+        const namesShown = namesCard.show.value;
+        const nameAlignment = String(layoutCard.rowAlignment.value.value);
         this.titleWrapEl.classList.toggle("is-group-stretched", nameAlignment !== "left");
 
         // Grid layout knobs - see .toggle-group in visual.less for how the name/switch columns,
         // indent and --toggle-max-level (names-right's hanging indent) fit together.
-        const namesRight = namesShown && nameCard.position.value.value === "right";
+        const namesRight = namesShown && namesCard.position.value.value === "right";
         this.groupEl.classList.toggle("is-names-hidden", !namesShown);
         this.groupEl.classList.toggle("is-names-right", namesRight);
         this.groupEl.classList.toggle("is-readonly", !this.interactionsAllowed());
         this.groupEl.classList.remove("is-align-left", "is-align-center", "is-align-right", "is-align-justify");
         this.groupEl.classList.add(`is-align-${nameAlignment}`);
-        this.groupEl.style.setProperty("--toggle-row-gap", `${groupCard.rowSpacing.value}px`);
-        this.groupEl.style.setProperty("--toggle-name-gap", `${nameCard.spacing.value}px`);
-        this.groupEl.style.setProperty("--toggle-indent", `${groupCard.indent.value}px`);
+        this.groupEl.style.setProperty("--toggle-row-gap", `${layoutCard.rowSpacing.value}px`);
+        this.groupEl.style.setProperty("--toggle-name-gap", `${namesCard.spacing.value}px`);
+        this.groupEl.style.setProperty("--toggle-indent", `${layoutCard.indent.value}px`);
         this.groupEl.style.setProperty("--toggle-max-level", String(Math.max(0, ...this.items.map((item) => item.level))));
         // Responsive sizing shares the tile's height out across every row, rather than sizing
         // each toggle as if it had the whole tile to itself.
@@ -1225,7 +1279,7 @@ export class Visual implements IVisual {
         // toggle groups on one page apart for a screen reader user.
         // The radiogroup is childrenEl - the toggle rows alone - so the checkbox-drawn header rows
         // (Group enable, master) stay outside it as ordinary controls in the surrounding group.
-        const isRadioGroup = groupCard.onlyOneActive.value && toggleCard.controlStyle.value.value === "radio";
+        const isRadioGroup = behaviorCard.onlyOneActive.value && controlsCard.controlStyle.value.value === "radio";
         this.groupEl.setAttribute("role", "group");
         if (isRadioGroup) {
             this.childrenEl.setAttribute("role", "radiogroup");
@@ -1275,8 +1329,9 @@ export class Visual implements IVisual {
 
     /** Draws one row's switch cell - the pre-group single toggle's render(), applied per row. */
     private renderSwitch(item: GroupItem, row: RowElements, isDisabled: boolean, tabbable: boolean): void {
-        const card = this.formattingSettings.toggleSettingsCard;
-        const groupCard = this.formattingSettings.groupSettingsCard;
+        const card = this.formattingSettings.stateLabelsCard;
+        const controlsCard = this.formattingSettings.controlsCard;
+        const behaviorCard = this.formattingSettings.behaviorCard;
         const { switchEl, cellEl, onLabelEl, offLabelEl, innerOnEl, innerOffEl } = row;
         const isMixed = item.isMixed;
         const isOn = item.isOn && !isMixed;
@@ -1284,8 +1339,8 @@ export class Visual implements IVisual {
         switchEl.classList.toggle("is-on", isOn);
         switchEl.classList.toggle("is-off", !isOn && !isMixed);
         switchEl.classList.toggle("is-mixed", isMixed);
-        switchEl.classList.toggle("is-depth", card.depthEffect.value);
-        switchEl.classList.toggle("is-size-fixed", this.formattingSettings.sizeSettingsCard.mode.value.value === "fixed");
+        switchEl.classList.toggle("is-depth", controlsCard.depthEffect.value);
+        switchEl.classList.toggle("is-size-fixed", controlsCard.sizeMode.value.value === "fixed");
 
         // Reflects hostCapabilities.allowInteractions (e.g. Focus mode thumbnails, some export/embed
         // contexts) visually and removes the switch from the tab order, matching handleClick's own
@@ -1306,21 +1361,21 @@ export class Visual implements IVisual {
         const skin = this.skinFor(item);
         switchEl.classList.toggle("is-checkbox", skin === "checkbox");
         switchEl.classList.toggle("is-radio", skin === "radio");
-        const role = skin === "toggle" ? "switch" : skin === "radio" && groupCard.onlyOneActive.value ? "radio" : "checkbox";
+        const role = skin === "toggle" ? "switch" : skin === "radio" && behaviorCard.onlyOneActive.value ? "radio" : "checkbox";
         switchEl.setAttribute("role", role);
         // role="switch" has no "mixed" state in ARIA - its aria-label still says "Mixed" below.
         switchEl.setAttribute("aria-checked", isMixed ? (role === "switch" ? "false" : "mixed") : String(isOn));
 
-        onLabelEl.textContent = card.onLabel.value;
-        offLabelEl.textContent = card.offLabel.value;
-        cellEl.style.setProperty("--toggle-label-gap", `${card.labelSpacing.value}px`);
+        onLabelEl.textContent = card.onText.value;
+        offLabelEl.textContent = card.offText.value;
+        cellEl.style.setProperty("--toggle-label-gap", `${card.spacing.value}px`);
 
         // All positions show only the label matching the current state - "inline-left"/
         // "inline-right" only differ in which side of the switch that single label sits on, via CSS
         // order (see visual.less), not in what's shown. "inside" puts it in the toggle skin's track
         // instead (is-inside); a checkbox or radio is too small to hold text, so it falls back to
-        // Label right, the conventional side for a checkbox's text.
-        let labelPosition = this.normalizeLegacyInlinePosition(card.labelPosition.value.value);
+        // Right, the conventional side for a checkbox's text.
+        let labelPosition = String(card.position.value.value);
         if (labelPosition === "inside" && skin !== "toggle") {
             labelPosition = "inline-right";
         }
@@ -1328,17 +1383,17 @@ export class Visual implements IVisual {
         cellEl.classList.toggle("toggle-slicer--inline-left", labelPosition === "inline-left");
         cellEl.classList.toggle("toggle-slicer--inline-right", labelPosition === "inline-right");
 
-        // showLabels false always wins over the stylesheet's container-query auto-hide, regardless
+        // State labels -> Show off always wins over the stylesheet's container-query auto-hide, regardless
         // of size. A Mixed master shows neither, since it's neither On nor Off.
-        const showLabels = card.showLabels.value;
+        const showLabels = card.show.value;
         const inside = showLabels && labelPosition === "inside";
         switchEl.classList.toggle("is-inside", inside);
-        innerOnEl.textContent = inside ? card.onLabel.value : "";
-        innerOffEl.textContent = inside ? card.offLabel.value : "";
+        innerOnEl.textContent = inside ? card.onText.value : "";
+        innerOffEl.textContent = inside ? card.offText.value : "";
         onLabelEl.style.display = showLabels && !inside && isOn ? "" : "none";
         offLabelEl.style.display = showLabels && !inside && !isOn && !isMixed ? "" : "none";
 
-        // The aria-label always names the row and both states regardless of showLabels/names, since
+        // The aria-label always names the row and both states regardless of State labels/Toggle names, since
         // hidden visible text makes the accessible name more important, not less. Names and label
         // text are arbitrary report-author input, so every token is substituted in a single pass
         // (text inserted for one token is never re-scanned, so a name containing "{2}" stays
@@ -1346,8 +1401,8 @@ export class Visual implements IVisual {
         // String.prototype.replace would otherwise interpret "$&" or "$1" in that text as patterns.
         const currentLabel = isMixed
             ? this.localizationManager.getDisplayName("Visual_State_Mixed")
-            : isOn ? card.onLabel.value : card.offLabel.value;
-        const tokens = [item.name, card.offLabel.value, card.onLabel.value, currentLabel];
+            : isOn ? card.onText.value : card.offText.value;
+        const tokens = [item.name, card.offText.value, card.onText.value, currentLabel];
         const ariaLabelKey = role === "switch" ? "Visual_Switch_AriaLabel" : role === "radio" ? "Visual_Radio_AriaLabel" : "Visual_Checkbox_AriaLabel";
         const ariaLabel = this.localizationManager.getDisplayName(ariaLabelKey)
             .replace(/\{([0-3])\}/g, (_token, n: string) => tokens[Number(n)]);
@@ -1395,10 +1450,10 @@ export class Visual implements IVisual {
             return;
         }
 
-        const card = this.formattingSettings.toggleSettingsCard;
+        const card = this.formattingSettings.stateLabelsCard;
         const currentLabel = item.isMixed
             ? this.localizationManager.getDisplayName("Visual_State_Mixed")
-            : item.isOn ? card.onLabel.value : card.offLabel.value;
+            : item.isOn ? card.onText.value : card.offText.value;
         const identity = this.identityFor(item);
 
         this.tooltipService.show({
